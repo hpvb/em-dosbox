@@ -28,6 +28,10 @@
 
 #include "printer_charmaps.h"
 
+#ifdef EMSCRIPTEN
+#include "emscripten_browser_file.h"
+#endif
+
 CFileLPT::CFileLPT (Bitu nr, Bit8u initIrq, CommandLine* cmd)
                               :CParallel (cmd, nr,initIrq) {
 	InstallationSuccessful = false;
@@ -179,6 +183,15 @@ void CFileLPT::handleUpperEvent(Bit16u type) {
 			if(addFF) {
 				fputc(12,file);
 			}
+#ifdef EMSCRIPTEN
+			fseek(file, 0, SEEK_END);
+			long fileSize = ftell(file);
+			rewind(file);
+			std::string content(fileSize, '\0');
+			fread(content.data(), 1, fileSize, file);
+			emscripten_browser_file::download("bob-document", "application/postscript", content);
+#endif
+
 			fclose(file);
 			lastChar = 0;
 			fileOpen=false;

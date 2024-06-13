@@ -19,7 +19,7 @@ dosbox_LDADD = cpu/libcpu.a debug/libdebug.a dos/libdos.a fpu/libfpu.a  hardware
 EXTRA_DIST = winres.rc dosbox.ico
 
 if EMSCRIPTEN_BUILD
-dosbox_LDFLAGS=-s TOTAL_MEMORY=134217728 -s ALLOW_MEMORY_GROWTH=0 -s FORCE_FILESYSTEM
+dosbox_LDFLAGS=-s TOTAL_MEMORY=134217728 -s ALLOW_MEMORY_GROWTH=1 -s FORCE_FILESYSTEM -s EXPORTED_RUNTIME_METHODS=[ccall]
 CLEANFILES=dosbox.js dosbox.html.mem dosbox.js.orig.js dosbox.js.tmp.js
 if EMTERPRETER
 dosbox_LDFLAGS+=-s EMTERPRETIFY=1 -s EMTERPRETIFY_ASYNC=1 -s EMTERPRETIFY_WHITELIST=@$(srcdir)/emterpretify.txt -s FETCH=1
