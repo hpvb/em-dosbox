@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2019  The DOSBox Team
+ *  Copyright (C) 2002-2020  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -44,7 +44,7 @@ public:
 	const char * GetFileName(){ return file_name.c_str();}
 
 	bool FindExist(char const * const name,bool remove=false);
-	bool FindHex(char const * const name,int & value,bool remove=false);
+	bool FindHex(char const * const name,unsigned int & value,bool remove=false);
 	bool FindInt(char const * const name,int & value,bool remove=false);
 	bool FindString(char const * const name,std::string & value,bool remove=false);
 	bool FindCommand(unsigned int which,std::string & value);
@@ -68,6 +68,8 @@ private:
 class Program {
 public:
 	Program();
+	Program(const Program&) = delete; // prevent copy
+	Program& operator=(const Program&) = delete; // prevent assignment
 	virtual ~Program(){
 		delete cmd;
 		delete psp;
@@ -80,10 +82,12 @@ public:
 	bool GetEnvNum(Bitu num,std::string & result);
 	Bitu GetEnvCount(void);
 	bool SetEnv(const char * entry,const char * new_string);
-	void WriteOut(const char * format,...);				/* Write to standard output */
-	void WriteOut_NoParsing(const char * format);				/* Write to standard output, no parsing */
+	void WriteOut(const char *format, ...);	// printf to DOS stdout
+	void WriteOut_NoParsing(const char *str); // write string to DOS stdout
+	void InjectMissingNewline();
 	void ChangeToLongCmd();
 
+	static void ResetLastWrittenChar(char c);
 };
 
 typedef void (PROGRAMS_Main)(Program * * make);

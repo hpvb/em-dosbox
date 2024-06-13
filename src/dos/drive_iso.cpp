@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2019  The DOSBox Team
+ *  Copyright (C) 2002-2020  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -21,6 +21,7 @@
 #include <cstring>
 #include "cdrom.h"
 #include "dosbox.h"
+#include "dos_mscdex.h"
 #include "dos_system.h"
 #include "support.h"
 #include "drives.h"
@@ -45,7 +46,6 @@ private:
 	Bit32u fileBegin;
 	Bit32u filePos;
 	Bit32u fileEnd;
-	Bit16u info;
 };
 
 isoFile::isoFile(isoDrive *drive, const char *name, FileStat_Block *stat, Bit32u offset) {
@@ -133,13 +133,6 @@ Bit16u isoFile::GetInformation(void) {
 	return 0x40;		// read-only drive
 }
 
-int   MSCDEX_RemoveDrive(char driveLetter);
-int   MSCDEX_AddDrive(char driveLetter, const char* physicalPath, Bit8u& subUnit);
-void  MSCDEX_ReplaceDrive(CDROM_Interface* cdrom, Bit8u subUnit);
-bool  MSCDEX_HasDrive(char driveLetter);
-bool  MSCDEX_GetVolumeName(Bit8u subUnit, char* name);
-Bit8u MSCDEX_GetSubUnit(char driveLetter);
-
 isoDrive::isoDrive(char driveLetter, const char *fileName, Bit8u mediaid, int &error)
          :iso(false),
           dataCD(false),
@@ -188,7 +181,7 @@ int isoDrive::UpdateMscdex(char driveLetter, const char* path, Bit8u& subUnit) {
 		CDROM_Interface* cdrom = new CDROM_Interface_Image(subUnit);
 		char pathCopy[CROSS_LEN];
 		safe_strncpy(pathCopy, path, CROSS_LEN);
-		if (!cdrom->SetDevice(pathCopy, 0)) {
+		if (!cdrom->SetDevice(pathCopy)) {
 			CDROM_Interface_Image::images[subUnit] = oldCdrom;
 			delete cdrom;
 			return 3;
@@ -512,7 +505,7 @@ int isoDrive :: readDirEntry(isoDirEntry *de, Bit8u *data) {
 }
 
 bool isoDrive :: loadImage() {
-	Bit8u pvd[COOKED_SECTOR_SIZE];
+	Bit8u pvd[BYTES_PER_COOKED_REDBOOK_FRAME];
 	dataCD = false;
 	readSector(pvd, ISO_FIRST_VD);
 	if (pvd[0] == 1 && !strncmp((char*)(&pvd[1]), "CD001", 5) && pvd[6] == 1) iso = true;
@@ -561,4 +554,3 @@ bool isoDrive :: lookup(isoDirEntry *de, const char *path) {
 	}
 	return true;
 }
-

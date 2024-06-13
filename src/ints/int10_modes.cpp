@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2019  The DOSBox Team
+ *  Copyright (C) 2002-2020  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,14 +16,12 @@
  *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  */
 
-
-#include <string.h>
-
-#include "dosbox.h"
-#include "mem.h"
-#include "inout.h"
 #include "int10.h"
-#include "vga.h"
+
+#include <cassert>
+#include <cstring>
+
+#include "inout.h"
 
 #define _EGA_HALF_CLOCK		0x0001
 #define _EGA_LINE_DOUBLE	0x0002
@@ -512,7 +510,8 @@ static void FinishSetMode(bool clearmem) {
 	}
 }
 
-bool INT10_SetVideoMode_OTHER(Bit16u mode,bool clearmem) {
+static bool INT10_SetVideoMode_OTHER(Bit16u mode, bool clearmem)
+{
 	switch (machine) {
 	case MCH_CGA:
 		if (mode>6) return false;
@@ -533,6 +532,12 @@ bool INT10_SetVideoMode_OTHER(Bit16u mode,bool clearmem) {
 		}
 		CurMode=&Hercules_Mode;
 		mode=7; // in case the video parameter table is modified
+		break;
+	case MCH_EGA:
+	case MCH_VGA:
+		// This code should be unreachable, as MCH_EGA and MCH_VGA are
+		// handled in function INT10_SetVideoMode.
+		assert(false);
 		break;
 	}
 	LOG(LOG_INT10,LOG_NORMAL)("Set Video Mode %X",mode);
@@ -557,10 +562,9 @@ bool INT10_SetVideoMode_OTHER(Bit16u mode,bool clearmem) {
 	IO_WriteW(crtc_base,0x06 | (CurMode->vdispend) << 8);
 	//Vertical sync position
 	IO_WriteW(crtc_base,0x07 | (CurMode->vdispend + ((CurMode->vtotal - CurMode->vdispend)/2)-1) << 8);
-	//Maximum scanline
-	Bit8u scanline,crtpage;
-	scanline=8;
-	switch(CurMode->type) {
+	// Maximum scanline
+	uint8_t scanline;
+	switch (CurMode->type) {
 	case M_TEXT:
 		if (machine==MCH_HERC) scanline=14;
 		else scanline=8;
@@ -575,6 +579,9 @@ bool INT10_SetVideoMode_OTHER(Bit16u mode,bool clearmem) {
 	case M_TANDY16:
 		if (CurMode->mode!=0x9) scanline=2;
 		else scanline=4;
+		break;
+	default:
+		scanline = 8;
 		break;
 	}
 	IO_WriteW(crtc_base,0x09 | (scanline-1) << 8);
@@ -594,6 +601,7 @@ bool INT10_SetVideoMode_OTHER(Bit16u mode,bool clearmem) {
 		0x1a,0x1b,0x0b			//8-a
 	};
 	Bit8u mode_control,color_select;
+	uint8_t crtpage;
 	switch (machine) {
 	case MCH_HERC:
 		IO_WriteB(0x3b8,0x28);	// TEXT mode and blinking characters
@@ -612,6 +620,7 @@ bool INT10_SetVideoMode_OTHER(Bit16u mode,bool clearmem) {
 		IO_WriteB(0x3d9,color_select);
 		real_writeb(BIOSMEM_SEG,BIOSMEM_CURRENT_MSR,mode_control);
 		real_writeb(BIOSMEM_SEG,BIOSMEM_CURRENT_PAL,color_select);
+		if (mono_cga) Mono_CGA_Palette();
 		break;
 	case MCH_TANDY:
 		/* Init some registers */
@@ -677,6 +686,12 @@ bool INT10_SetVideoMode_OTHER(Bit16u mode,bool clearmem) {
 		INT10_SetColorSelect(1);
 		INT10_SetBackgroundBorder(0);
 		break;
+	case MCH_EGA:
+	case MCH_VGA:
+		// This code should be unreachable, as MCH_EGA and MCH_VGA are
+		// handled in function INT10_SetVideoMode.
+		assert(false);
+		break;
 	}
 
 	RealPt vparams = RealGetVec(0x1d);
@@ -699,9 +714,10 @@ bool INT10_SetVideoMode_OTHER(Bit16u mode,bool clearmem) {
 	return true;
 }
 
-
-bool INT10_SetVideoMode(Bit16u mode) {
-	bool clearmem=true;Bitu i;
+bool INT10_SetVideoMode(Bit16u mode)
+{
+	bool clearmem = true;
+	Bitu i;
 	if (mode>=0x100) {
 		if ((mode & 0x4000) && int10.vesa_nolfb) return false;
 		if (mode & 0x8000) clearmem=false;
@@ -713,7 +729,9 @@ bool INT10_SetVideoMode(Bit16u mode) {
 	}
 	int10.vesa_setmode=0xffff;
 	LOG(LOG_INT10,LOG_NORMAL)("Set Video Mode %X",mode);
-	if (!IS_EGAVGA_ARCH) return INT10_SetVideoMode_OTHER(mode,clearmem);
+
+	if (!IS_EGAVGA_ARCH)
+		return INT10_SetVideoMode_OTHER(mode, clearmem);
 
 	/* First read mode setup settings from bios area */
 //	Bit8u video_ctl=real_readb(BIOSMEM_SEG,BIOSMEM_VIDEO_CTL);
@@ -825,6 +843,18 @@ bool INT10_SetVideoMode(Bit16u mode) {
 	case M_VGA:
 		seq_data[2]|=0xf;				//Enable all planes for writing
 		seq_data[4]|=0xc;				//Graphics - odd/even - Chained
+		break;
+	case M_CGA16:      // only in MCH_CGA
+	case M_TANDY2:     // only in MCH_CGA, MCH_TANDY, MCH_PCJR
+	case M_TANDY4:     // only in MCH_CGA, MCH_TANDY, MCH_PCJR
+	case M_TANDY16:    // only in MCH_TANDY, MCH_PCJR
+	case M_TANDY_TEXT: // only in MCH_CGA, MCH_TANDY
+	case M_HERC_TEXT:  // only in MCH_HERC
+	case M_HERC_GFX:   // only in MCH_HERC
+	case M_ERROR:
+		// This code should be unreachable, as this function deals only
+		// with MCH_EGA and MCH_VGA.
+		assert(false); 
 		break;
 	}
 	for (Bit8u ct=0;ct<SEQ_REGS;ct++) {
@@ -1055,6 +1085,18 @@ bool INT10_SetVideoMode(Bit16u mode) {
 		if (CurMode->special & _VGA_PIXEL_DOUBLE)
 			mode_control |= 0x08;
 		break;
+	case M_CGA16:      // only in MCH_CGA
+	case M_TANDY2:     // only in MCH_CGA, MCH_TANDY, MCH_PCJR
+	case M_TANDY4:     // only in MCH_CGA, MCH_TANDY, MCH_PCJR
+	case M_TANDY16:    // only in MCH_TANDY, MCH_PCJR
+	case M_TANDY_TEXT: // only in MCH_CGA, MCH_TANDY
+	case M_HERC_TEXT:  // only in MCH_HERC
+	case M_HERC_GFX:   // only in MCH_HERC
+	case M_ERROR:
+		// This code should be unreachable, as this function deals only
+		// with MCH_EGA and MCH_VGA.
+		assert(false); 
+		break;
 	}
 
 	IO_Write(crtc_base,0x17);IO_Write(crtc_base+1,mode_control);
@@ -1131,6 +1173,18 @@ bool INT10_SetVideoMode(Bit16u mode) {
 			gfx_data[0x6]|=0x0f;		//graphics mode at at 0xb800=0xbfff
 		}
 		break;
+	case M_CGA16:      // only in MCH_CGA
+	case M_TANDY2:     // only in MCH_CGA, MCH_TANDY, MCH_PCJR
+	case M_TANDY4:     // only in MCH_CGA, MCH_TANDY, MCH_PCJR
+	case M_TANDY16:    // only in MCH_TANDY, MCH_PCJR
+	case M_TANDY_TEXT: // only in MCH_CGA, MCH_TANDY
+	case M_HERC_TEXT:  // only in MCH_HERC
+	case M_HERC_GFX:   // only in MCH_HERC
+	case M_ERROR:
+		// This code should be unreachable, as this function deals only
+		// with MCH_EGA and MCH_VGA.
+		assert(false); 
+		break;
 	}
 	for (Bit8u ct=0;ct<GFX_REGS;ct++) {
 		IO_Write(0x3ce,ct);
@@ -1172,6 +1226,9 @@ bool INT10_SetVideoMode(Bit16u mode) {
 		}
 		break;
 	case M_TANDY16:
+		// TODO: TANDY_16 seems like an oversight here, as
+		//       this function is supposed to deal with
+		//       MCH_EGA and MCH_VGA only.
 		att_data[0x10]=0x01;		//Color Graphics
 		for (Bit8u ct=0;ct<16;ct++) att_data[ct]=ct;
 		break;
@@ -1229,6 +1286,18 @@ att_text16:
 		for (Bit8u ct=0;ct<16;ct++) att_data[ct]=ct;
 		att_data[0x10]=0x41;		//Color Graphics 8-bit
 		break;
+	case M_CGA16:      // only in MCH_CGA
+	case M_TANDY2:     // only in MCH_CGA, MCH_TANDY, MCH_PCJR
+	case M_TANDY4:     // only in MCH_CGA, MCH_TANDY, MCH_PCJR
+	// case M_TANDY16:    // only in MCH_TANDY, MCH_PCJR
+	case M_TANDY_TEXT: // only in MCH_CGA, MCH_TANDY
+	case M_HERC_TEXT:  // only in MCH_HERC
+	case M_HERC_GFX:   // only in MCH_HERC
+	case M_ERROR:
+		// This code should be unreachable, as this function deals only
+		// with MCH_EGA and MCH_VGA.
+		assert(false); 
+		break;
 	}
 	IO_Read(mono_mode ? 0x3ba : 0x3da);
 	if ((modeset_ctl & 8)==0) {
@@ -1262,6 +1331,9 @@ att_text16:
 		case M_CGA2:
 		case M_CGA4:
 		case M_TANDY16:
+			// TODO: TANDY_16 seems like an oversight here, as
+			//       this function is supposed to deal with
+			//       MCH_EGA and MCH_VGA only.
 			for (i=0;i<64;i++) {
 				IO_Write(0x3c9,cga_palette_2[i][0]);
 				IO_Write(0x3c9,cga_palette_2[i][1]);
@@ -1307,6 +1379,18 @@ dac_text16:
 				IO_Write(0x3c9,vga_palette[i][2]);
 			}
 			break;
+		case M_CGA16:      // only in MCH_CGA
+		case M_TANDY2:     // only in MCH_CGA, MCH_TANDY, MCH_PCJR
+		case M_TANDY4:     // only in MCH_CGA, MCH_TANDY, MCH_PCJR
+		// case M_TANDY16:    // only in MCH_TANDY, MCH_PCJR
+		case M_TANDY_TEXT: // only in MCH_CGA, MCH_TANDY
+		case M_HERC_TEXT:  // only in MCH_HERC
+		case M_HERC_GFX:   // only in MCH_HERC
+		case M_ERROR:
+			// This code should be unreachable, as this function deals only
+			// with MCH_EGA and MCH_VGA.
+			assert(false); 
+			break;
 		}
 		if (IS_VGA_ARCH) {
 			/* check if gray scale summing is enabled */
@@ -1350,6 +1434,8 @@ dac_text16:
 		case 3:
 		case 7:real_writeb(BIOSMEM_SEG,BIOSMEM_CURRENT_MSR,0x29);break;
 		}
+		break;
+	default:
 		break;
 	}
 
@@ -1482,20 +1568,22 @@ Bitu VideoModeMemSize(Bitu mode) {
 		i++;
 	}
 	if (!vmodeBlock)
-        return 0;
+		return 0;
 
 	switch(vmodeBlock->type) {
 	case M_LIN4:
 		return vmodeBlock->swidth*vmodeBlock->sheight/2;
 	case M_LIN8:
 		return vmodeBlock->swidth*vmodeBlock->sheight;
-	case M_LIN15: case M_LIN16:
+	case M_LIN15:
+	case M_LIN16:
 		return vmodeBlock->swidth*vmodeBlock->sheight*2;
 	case M_LIN32:
 		return vmodeBlock->swidth*vmodeBlock->sheight*4;
 	case M_TEXT:
 		return vmodeBlock->twidth*vmodeBlock->theight*2;
+	default:
+		// Return 0 for all other types, those always fit in memory
+		return 0;
 	}
-	// Return 0 for all other types, those always fit in memory
-	return 0;
 }

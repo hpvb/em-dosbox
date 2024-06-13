@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2019  The DOSBox Team
+ *  Copyright (C) 2002-2020  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,12 +16,10 @@
  *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  */
 
-
-#include "dosbox.h"
-#include "mem.h"
-#include "inout.h"
 #include "int10.h"
 
+#include "mem.h"
+#include "inout.h"
 
 const Bit8u vparams[] = {
 	// 40x25 mode 0 and 1 crtc registers
@@ -74,6 +72,7 @@ const Bit8u vparams_tandy[] = {
 	0x2c, 0x28, 0x2d, 0x29, 0x2a, 0x2e, 0x1e, 0x29
 };
 
+#if 0
 const Bit8u vparams_tandy_td[] = {
 	// 40x25 mode 0 and 1 crtc registers
 	0x38, 0x28, 0x2d, 0x0a, 0x1f, 0x06, 0x19, 0x1c, 0x02, 0x07, 0x06, 0x07, 0,0,0,0,
@@ -92,7 +91,7 @@ const Bit8u vparams_tandy_td[] = {
 	// CGA mode register
 	0x2c, 0x28, 0x2d, 0x29, 0x2a, 0x2e, 0x1e, 0x29
 };
-
+#endif
 
 static Bit8u video_parameter_table_vga[0x40*0x1d]={
 // video parameter table for mode 0 (cga emulation)

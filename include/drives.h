@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2019  The DOSBox Team
+ *  Copyright (C) 2002-2020  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,18 +16,22 @@
  *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  */
 
+#ifndef DOSBOX_DRIVES_H
+#define DOSBOX_DRIVES_H
 
-#ifndef _DRIVES_H__
-#define _DRIVES_H__
+#include "dosbox.h"
 
-#include <vector>
+#include <memory>
+#include <unordered_set>
 #include <string>
-#include <sys/types.h>
+#include <vector>
+
+#include "dos_inc.h"
 #include "dos_system.h"
-#include "shell.h" /* for DOS_Shell */
 
 bool WildFileCmp(const char * file, const char * wild);
 void Set_Label(char const * const input, char * const output, bool cdrom);
+std::string To_Label(const char* name);
 
 class DriveManager {
 public:
@@ -42,8 +46,8 @@ public:
 	
 private:
 	static struct DriveInfo {
-		std::vector<DOS_Drive*> disks;
-		Bit32u currentDisk;
+		std::vector<DOS_Drive*> disks = {};
+		int currentDisk = 0;
 	} driveInfos[DOS_DRIVES];
 	
 	static int currentDrive;
@@ -74,14 +78,13 @@ public:
 	const char* getBasedir() {return basedir;};
 protected:
 	char basedir[CROSS_LEN];
-private:
-	friend void DOS_Shell::CMD_SUBST(char* args);
-protected:
 	struct {
 		char srch_dir[CROSS_LEN];
 	} srchInfo[MAX_OPENDIRS];
 
 private:
+	bool IsFirstEncounter(const std::string& filename);
+	std::unordered_set<std::string> write_protected_files;
 	struct {
 		Bit16u bytes_sector;
 		Bit8u sectors_cluster;
@@ -152,6 +155,8 @@ class imageDisk;
 class fatDrive : public DOS_Drive {
 public:
 	fatDrive(const char * sysFilename, Bit32u bytesector, Bit32u cylsector, Bit32u headscyl, Bit32u cylinders, Bit32u startSector);
+	fatDrive(const fatDrive&) = delete; // prevent copying
+	fatDrive& operator= (const fatDrive&) = delete; // prevent assignment
 	virtual bool FileOpen(DOS_File * * file,char * name,Bit32u flags);
 	virtual bool FileCreate(DOS_File * * file,char * name,Bit16u attributes);
 	virtual bool FileUnlink(char * name);
@@ -182,7 +187,7 @@ public:
 	Bit32u getFirstFreeClust(void);
 	bool directoryBrowse(Bit32u dirClustNumber, direntry *useEntry, Bit32s entNum, Bit32s start=0);
 	bool directoryChange(Bit32u dirClustNumber, direntry *useEntry, Bit32s entNum);
-	imageDisk *loadedDisk;
+	std::shared_ptr<imageDisk> loadedDisk;
 	bool created_successfully;
 private:
 	Bit32u getClusterValue(Bit32u clustNum);
@@ -194,18 +199,6 @@ private:
 	bool addDirectoryEntry(Bit32u dirClustNumber, direntry useEntry);
 	void zeroOutCluster(Bit32u clustNumber);
 	bool getEntryName(char *fullname, char *entname);
-	friend void DOS_Shell::CMD_SUBST(char* args); 	
-	struct {
-		char srch_dir[CROSS_LEN];
-	} srchInfo[MAX_OPENDIRS];
-
-	struct {
-		Bit16u bytes_sector;
-		Bit8u sectors_cluster;
-		Bit16u total_clusters;
-		Bit16u free_clusters;
-		Bit8u mediaid;
-	} allocation;
 	
 	bootstrap bootbuffer;
 	bool absolute;
@@ -216,17 +209,15 @@ private:
 	Bit32u firstRootDirSect;
 
 	Bit32u cwdDirCluster;
-	Bit32u dirPosition; /* Position in directory search */
 
 	Bit8u fatSectBuffer[1024];
 	Bit32u curFatSect;
 };
 
-
 class cdromDrive : public localDrive
 {
 public:
-	cdromDrive(const char driveLetter, const char * startdir,Bit16u _bytes_sector,Bit8u _sectors_cluster,Bit16u _total_clusters,Bit16u _free_clusters,Bit8u _mediaid, int& error);
+	cdromDrive(const char _driveLetter, const char * startdir,Bit16u _bytes_sector,Bit8u _sectors_cluster,Bit16u _total_clusters,Bit16u _free_clusters,Bit8u _mediaid, int& error);
 	virtual bool FileOpen(DOS_File * * file,char * name,Bit32u flags);
 	virtual bool FileCreate(DOS_File * * file,char * name,Bit16u attributes);
 	virtual bool FileUnlink(char * name);
@@ -408,6 +399,8 @@ public:
 	virtual Bits UnMount(void);
 	virtual char const* GetLabel(void);
 private:
+	Virtual_Drive(const Virtual_Drive&); // prevent copying
+	Virtual_Drive& operator= (const Virtual_Drive&); // prevent assignment
 	VFILE_Block * search_file;
 };
 

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2019  The DOSBox Team
+ *  Copyright (C) 2002-2020  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,16 +16,15 @@
  *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  */
 
+#include "int10.h"
 
 #include <string.h>
 #include <stddef.h>
 
-#include "dosbox.h"
 #include "callback.h"
 #include "regs.h"
 #include "mem.h"
 #include "inout.h"
-#include "int10.h"
 #include "dos_inc.h"
 
 #define VESA_SUCCESS          0x00
@@ -149,77 +148,81 @@ foundit:
 	switch (mblock->type) {
 	case M_LIN4:
 		pageSize = mblock->sheight * mblock->swidth/2;
-		var_write(&minfo.BytesPerScanLine,mblock->swidth/8);
-		var_write(&minfo.NumberOfPlanes,0x4);
-		var_write(&minfo.BitsPerPixel,4);
-		var_write(&minfo.MemoryModel,3);	//ega planar mode
-		modeAttributes = 0x1b;	// Color, graphics, no linear buffer
+		minfo.BytesPerScanLine = host_to_le16(mblock->swidth / 8);
+		minfo.NumberOfPlanes = 0x4;
+		minfo.BitsPerPixel = 4u;
+		minfo.MemoryModel = 3u; // ega planar mode
+		modeAttributes = 0x1b; // Color, graphics, no linear buffer
 		break;
 	case M_LIN8:
 		pageSize = mblock->sheight * mblock->swidth;
-		var_write(&minfo.BytesPerScanLine,mblock->swidth);
-		var_write(&minfo.NumberOfPlanes,0x1);
-		var_write(&minfo.BitsPerPixel,8);
-		var_write(&minfo.MemoryModel,4);		//packed pixel
-		modeAttributes = 0x1b;	// Color, graphics
-		if (!int10.vesa_nolfb) modeAttributes |= 0x80;	// linear framebuffer
+		minfo.BytesPerScanLine = host_to_le16(mblock->swidth);
+		minfo.NumberOfPlanes = 0x1;
+		minfo.BitsPerPixel = 8u;
+		minfo.MemoryModel = 4u; // packed pixel
+		modeAttributes = 0x1b; // Color, graphics
+		if (!int10.vesa_nolfb)
+			modeAttributes |= 0x80; // linear framebuffer
 		break;
 	case M_LIN15:
 		pageSize = mblock->sheight * mblock->swidth*2;
-		var_write(&minfo.BytesPerScanLine,mblock->swidth*2);
-		var_write(&minfo.NumberOfPlanes,0x1);
-		var_write(&minfo.BitsPerPixel,15);
-		var_write(&minfo.MemoryModel,6);	//HiColour
-		var_write(&minfo.RedMaskSize,5);
-		var_write(&minfo.RedMaskPos,10);
-		var_write(&minfo.GreenMaskSize,5);
-		var_write(&minfo.GreenMaskPos,5);
-		var_write(&minfo.BlueMaskSize,5);
-		var_write(&minfo.BlueMaskPos,0);
-		var_write(&minfo.ReservedMaskSize,0x01);
-		var_write(&minfo.ReservedMaskPos,0x0f);
-		modeAttributes = 0x1b;	// Color, graphics
-		if (!int10.vesa_nolfb) modeAttributes |= 0x80;	// linear framebuffer
+		minfo.BytesPerScanLine = host_to_le16(mblock->swidth * 2);
+		minfo.NumberOfPlanes = 0x1;
+		minfo.BitsPerPixel = 15u;
+		minfo.MemoryModel = 6u; // HiColour
+		minfo.RedMaskSize = 5u;
+		minfo.RedMaskPos = 10u;
+		minfo.GreenMaskSize = 5u;
+		minfo.GreenMaskPos = 5u;
+		minfo.BlueMaskSize = 5u;
+		minfo.BlueMaskPos = 0u;
+		minfo.ReservedMaskSize = 0x01;
+		minfo.ReservedMaskPos = 0x0f;
+		modeAttributes = 0x1b; // Color, graphics
+		if (!int10.vesa_nolfb)
+			modeAttributes |= 0x80; // linear framebuffer
 		break;
 	case M_LIN16:
 		pageSize = mblock->sheight * mblock->swidth*2;
-		var_write(&minfo.BytesPerScanLine,mblock->swidth*2);
-		var_write(&minfo.NumberOfPlanes,0x1);
-		var_write(&minfo.BitsPerPixel,16);
-		var_write(&minfo.MemoryModel,6);	//HiColour
-		var_write(&minfo.RedMaskSize,5);
-		var_write(&minfo.RedMaskPos,11);
-		var_write(&minfo.GreenMaskSize,6);
-		var_write(&minfo.GreenMaskPos,5);
-		var_write(&minfo.BlueMaskSize,5);
-		var_write(&minfo.BlueMaskPos,0);
-		modeAttributes = 0x1b;	// Color, graphics
-		if (!int10.vesa_nolfb) modeAttributes |= 0x80;	// linear framebuffer
+		minfo.BytesPerScanLine = host_to_le16(mblock->swidth * 2);
+		minfo.NumberOfPlanes = 0x1;
+		minfo.BitsPerPixel = 16u;
+		minfo.MemoryModel = 6u; // HiColour
+		minfo.RedMaskSize = 5u;
+		minfo.RedMaskPos = 11u;
+		minfo.GreenMaskSize = 6u;
+		minfo.GreenMaskPos = 5u;
+		minfo.BlueMaskSize = 5u;
+		minfo.BlueMaskPos = 0u;
+		modeAttributes = 0x1b; // Color, graphics
+		if (!int10.vesa_nolfb)
+			modeAttributes |= 0x80; // linear framebuffer
 		break;
 	case M_LIN32:
 		pageSize = mblock->sheight * mblock->swidth*4;
-		var_write(&minfo.BytesPerScanLine,mblock->swidth*4);
-		var_write(&minfo.NumberOfPlanes,0x1);
-		var_write(&minfo.BitsPerPixel,32);
-		var_write(&minfo.MemoryModel,6);	//HiColour
-		var_write(&minfo.RedMaskSize,8);
-		var_write(&minfo.RedMaskPos,0x10);
-		var_write(&minfo.GreenMaskSize,0x8);
-		var_write(&minfo.GreenMaskPos,0x8);
-		var_write(&minfo.BlueMaskSize,0x8);
-		var_write(&minfo.BlueMaskPos,0x0);
-		var_write(&minfo.ReservedMaskSize,0x8);
-		var_write(&minfo.ReservedMaskPos,0x18);
-		modeAttributes = 0x1b;	// Color, graphics
-		if (!int10.vesa_nolfb) modeAttributes |= 0x80;	// linear framebuffer
+		minfo.BytesPerScanLine = host_to_le16(mblock->swidth * 4);
+		minfo.NumberOfPlanes = 0x1u;
+		minfo.BitsPerPixel = 32u;
+		minfo.MemoryModel = 6u; // HiColour
+		minfo.RedMaskSize = 8u;
+		minfo.RedMaskPos = 0x10;
+		minfo.GreenMaskSize = 0x8;
+		minfo.GreenMaskPos = 0x8;
+		minfo.BlueMaskSize = 0x8;
+		minfo.BlueMaskPos = 0x0;
+		minfo.ReservedMaskSize = 0x8;
+		minfo.ReservedMaskPos = 0x18;
+		modeAttributes = 0x1b; // Color, graphics
+		if (!int10.vesa_nolfb)
+			modeAttributes |= 0x80; // linear framebuffer
 		break;
 	case M_TEXT:
 		pageSize = 0;
-		var_write(&minfo.BytesPerScanLine, mblock->twidth * 2);
-		var_write(&minfo.NumberOfPlanes,0x4);
-		var_write(&minfo.BitsPerPixel,4);
-		var_write(&minfo.MemoryModel,0);	// text
-		modeAttributes = 0x0f;	//Color, text, bios output
+		minfo.BytesPerScanLine = host_to_le16(mblock->twidth * 2);
+		minfo.NumberOfPlanes = 0x4;
+		minfo.BitsPerPixel = 4u;
+		minfo.MemoryModel = 0u; // text
+		modeAttributes = 0x0f; // Color, text, bios output
 		break;
 	default:
 		return VESA_FAIL;
@@ -237,34 +240,35 @@ foundit:
 	} else if (pageSize) {
 		pages = (vga.vmemsize / pageSize)-1;
 	}
-	var_write(&minfo.NumberOfImagePages, pages);
-	var_write(&minfo.ModeAttributes, modeAttributes);
-	var_write(&minfo.WinAAttributes, 0x7);	// Exists/readable/writable
+	assert(pages <= 255);
+	minfo.NumberOfImagePages = static_cast<uint8_t>(pages);
+	minfo.ModeAttributes = host_to_le16(modeAttributes);
+	minfo.WinAAttributes = 0x7; // Exists/readable/writable
 
 	if (mblock->type==M_TEXT) {
-		var_write(&minfo.WinGranularity,32);
-		var_write(&minfo.WinSize,32);
-		var_write(&minfo.WinASegment,0xb800);
-		var_write(&minfo.XResolution,mblock->twidth);
-		var_write(&minfo.YResolution,mblock->theight);
+		minfo.WinGranularity = host_to_le16(32u);
+		minfo.WinSize = host_to_le16(32u);
+		minfo.WinASegment = host_to_le16(0xb800);
+		minfo.XResolution = host_to_le16(mblock->twidth);
+		minfo.YResolution = host_to_le16(mblock->theight);
 	} else {
-		var_write(&minfo.WinGranularity,64);
-		var_write(&minfo.WinSize,64);
-		var_write(&minfo.WinASegment,0xa000);
-		var_write(&minfo.XResolution,mblock->swidth);
-		var_write(&minfo.YResolution,mblock->sheight);
+		minfo.WinGranularity = host_to_le16(64u);
+		minfo.WinSize = host_to_le16(64u);
+		minfo.WinASegment = host_to_le16(0xa000);
+		minfo.XResolution = host_to_le16(mblock->swidth);
+		minfo.YResolution = host_to_le16(mblock->sheight);
 	}
-	var_write(&minfo.WinFuncPtr,int10.rom.set_window);
-	var_write(&minfo.NumberOfBanks,0x1);
-	var_write(&minfo.Reserved_page,0x1);
-	var_write(&minfo.XCharSize,mblock->cwidth);
-	var_write(&minfo.YCharSize,mblock->cheight);
-	if (!int10.vesa_nolfb) var_write(&minfo.PhysBasePtr,S3_LFB_BASE);
+	minfo.WinFuncPtr = host_to_le32(int10.rom.set_window);
+	minfo.NumberOfBanks = 0x1;
+	minfo.Reserved_page = 0x1;
+	minfo.XCharSize = static_cast<uint8_t>(mblock->cwidth);
+	minfo.YCharSize = static_cast<uint8_t>(mblock->cheight);
+	if (!int10.vesa_nolfb)
+		minfo.PhysBasePtr = host_to_le32(S3_LFB_BASE);
 
 	MEM_BlockWrite(buf,&minfo,sizeof(MODE_INFO));
 	return VESA_SUCCESS;
 }
-
 
 Bit8u VESA_SetSVGAMode(Bit16u mode) {
 	if (INT10_SetVideoMode(mode)) {
@@ -576,10 +580,6 @@ void INT10_SetupVESA(void) {
 	for (i=0;i<len;i++) {
 		phys_writeb(0xc0000+int10.rom.used++,string_oem[i]);
 	}
-	switch (svgaCard) {
-	case SVGA_S3Trio:
-		break;
-	}
 	/* Prepare the real mode interface */
 	int10.rom.wait_retrace=RealMake(0xc000,int10.rom.used);
 	int10.rom.used += (Bit16u)CALLBACK_Setup(0, NULL, CB_VESA_WAIT, PhysMake(0xc000,int10.rom.used), "");
@@ -609,4 +609,3 @@ void INT10_SetupVESA(void) {
 	phys_writew( Real2Phys(int10.rom.pmode_interface) + 6, 0);
 	int10.rom.pmode_interface_size=int10.rom.used - RealOff( int10.rom.pmode_interface );
 }
-

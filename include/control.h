@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2019  The DOSBox Team
+ *  Copyright (C) 2002-2020  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,39 +16,18 @@
  *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  */
 
-
 #ifndef DOSBOX_CONTROL_H
 #define DOSBOX_CONTROL_H
 
-#ifdef _MSC_VER
-#pragma warning ( disable : 4786 )
-#pragma warning ( disable : 4290 )
-#endif
+#include "dosbox.h"
 
-#ifndef DOSBOX_PROGRAMS_H
-#include "programs.h"
-#endif
-#ifndef DOSBOX_SETUP_H
-#include "setup.h"
-#endif
-
-#ifndef CH_LIST
-#define CH_LIST
+#include <cassert>
 #include <list>
-#endif
-
-#ifndef CH_VECTOR
-#define CH_VECTOR
-#include <vector>
-#endif
-
-#ifndef CH_STRING
-#define CH_STRING
 #include <string>
-#endif
+#include <vector>
 
-
-
+#include "programs.h"
+#include "setup.h"
 
 class Config{
 public:
@@ -62,14 +41,25 @@ private:
 	void (* _start_function)(void);
 	bool secure_mode; //Sandbox mode
 public:
-	bool initialised;
 	std::vector<std::string> startup_params;
 	std::vector<std::string> configfiles;
-	Config(CommandLine * cmd):cmdline(cmd),secure_mode(false) {
+
+	Config(CommandLine *cmd)
+		: cmdline(cmd),
+		  sectionlist{},
+		  _start_function(nullptr),
+		  secure_mode(false),
+		  startup_params{},
+		  configfiles{}
+	{
+		assert(cmdline);
 		startup_params.push_back(cmdline->GetFileName());
 		cmdline->FillVector(startup_params);
-		initialised=false;
 	}
+
+	Config(const Config&) = delete; // prevent copying
+	Config& operator=(const Config&) = delete; // prevent assignment
+
 	~Config();
 
 	Section_line * AddSection_line(char const * const _name,void (*_initfunction)(Section*));
@@ -83,7 +73,7 @@ public:
 	void Init();
 	void ShutDown();
 	void StartUp();
-	bool PrintConfig(char const * const configfilename) const;
+	bool PrintConfig(const std::string &filename) const;
 	bool ParseConfigFile(char const * const configfilename);
 	void ParseEnv(char ** envp);
 	bool SecureMode() const { return secure_mode; }

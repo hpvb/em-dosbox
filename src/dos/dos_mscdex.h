@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2020  The DOSBox Team
+ *  Copyright (C) 2019-2020  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,19 +16,19 @@
  *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  */
 
-#ifndef __XMS_H__
-#define __XMS_H__
+#ifndef DOSBOX_DOS_MSCDEX_H
+#define DOSBOX_DOS_MSCDEX_H
 
-Bitu	XMS_QueryFreeMemory		(Bit16u& largestFree, Bit16u& totalFree);
-Bitu	XMS_AllocateMemory		(Bitu size, Bit16u& handle);
-Bitu	XMS_FreeMemory			(Bitu handle);
-Bitu	XMS_MoveMemory			(PhysPt bpt);
-Bitu	XMS_LockMemory			(Bitu handle, Bit32u& address);
-Bitu	XMS_UnlockMemory		(Bitu handle);
-Bitu	XMS_GetHandleInformation(Bitu handle, Bit8u& lockCount, Bit8u& numFree, Bit16u& size);
-Bitu	XMS_ResizeMemory		(Bitu handle, Bitu newSize);
+#include "dosbox.h"
+#include "cdrom.h"
 
-Bitu	XMS_EnableA20			(bool enable);
-Bitu	XMS_GetEnabledA20		(void);
+int   MSCDEX_AddDrive(char driveLetter, const char *physicalPath, Bit8u &subUnit);
+int   MSCDEX_RemoveDrive(char driveLetter);
+bool  MSCDEX_HasDrive(char driveLetter);
+void  MSCDEX_ReplaceDrive(CDROM_Interface *cdrom, Bit8u subUnit);
+Bit8u MSCDEX_GetSubUnit(char driveLetter);
+bool  MSCDEX_GetVolumeName(Bit8u subUnit, char *name);
+bool  MSCDEX_HasMediaChanged(Bit8u subUnit);
 
-#endif
+#endif // DOSBOX_DOS_MSCDEX_H
+

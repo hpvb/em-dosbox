@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2019  The DOSBox Team
+ *  Copyright (C) 2002-2020  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,12 +16,14 @@
  *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  */
 
-
-#include <stdlib.h>
-#include <string.h>
-#include <algorithm> //std::copy
-#include <iterator>  //std::front_inserter
 #include "shell.h"
+
+#include <algorithm>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <iterator>
+
 #include "regs.h"
 #include "callback.h"
 #include "support.h"
@@ -31,7 +33,9 @@ void DOS_Shell::ShowPrompt(void) {
 	char dir[DOS_PATHLENGTH];
 	dir[0] = 0; //DOS_GetCurrentDir doesn't always return something. (if drive is messed up)
 	DOS_GetCurrentDir(0,dir);
-	WriteOut("%c:\\%s>",drive,dir);
+	InjectMissingNewline();
+	WriteOut("%c:\\%s>", drive, dir);
+	ResetLastWrittenChar('\n'); // prevents excessive newline if cmd prints nothing
 }
 
 static void outc(Bit8u c) {
@@ -40,13 +44,6 @@ static void outc(Bit8u c) {
 }
 
 void DOS_Shell::InputCommand(char * line) {
-#if defined(EMSCRIPTEN) && !defined(EMTERPRETER_SYNC) && !defined(EM_ASYNCIFY)
-	if (!strcmp(Files[input_handle]->name, "CON")) {
-		// This can be called during startup, before main loop being used.
-		LOG_MSG("Emulation ended because interactive shell is not supported.");
-		em_exit(1);
-	}
-#else
 	Bitu size=CMD_MAXLINE-2; //lastcharacter+0
 	Bit8u c;Bit16u n=1;
 	Bitu str_len=0;Bitu str_index=0;
@@ -261,11 +258,11 @@ void DOS_Shell::InputCommand(char * line) {
 
 					// build the completion list
 					char mask[DOS_PATHLENGTH] = {0};
-					if (strlen(p_completion_start) + 3 >= DOS_PATHLENGTH) {
-						//Beep;
-						break;
-					}
 					if (p_completion_start) {
+						if (strlen(p_completion_start) + 3 >= DOS_PATHLENGTH) {
+							//Beep;
+							break;
+						}
 						safe_strncpy(mask, p_completion_start,DOS_PATHLENGTH);
 						char* dot_pos=strrchr(mask,'.');
 						char* bs_pos=strrchr(mask,'\\');
@@ -382,7 +379,6 @@ void DOS_Shell::InputCommand(char * line) {
 	// add command line to history
 	l_history.push_front(line); it_history = l_history.begin();
 	if (l_completion.size()) l_completion.clear();
-#endif // !EMSCRIPTEN
 }
 
 std::string full_arguments = "";
@@ -565,33 +561,26 @@ bool DOS_Shell::Execute(char * name,char * args) {
 	return true; //Executable started
 }
 
-
-
-
-static const char * bat_ext=".BAT";
-static const char * com_ext=".COM";
-static const char * exe_ext=".EXE";
 static char which_ret[DOS_PATHLENGTH+4];
 
-char * DOS_Shell::Which(char * name) {
-	size_t name_len = strlen(name);
-	if(name_len >= DOS_PATHLENGTH) return 0;
+char * DOS_Shell::Which(char * name)
+{
+	const size_t name_len = strlen(name);
+	if (name_len >= DOS_PATHLENGTH)
+		return 0;
 
 	/* Parse through the Path to find the correct entry */
 	/* Check if name is already ok but just misses an extension */
 
-	if (DOS_FileExists(name)) return name;
-	/* try to find .com .exe .bat */
-	strcpy(which_ret,name);
-	strcat(which_ret,com_ext);
-	if (DOS_FileExists(which_ret)) return which_ret;
-	strcpy(which_ret,name);
-	strcat(which_ret,exe_ext);
-	if (DOS_FileExists(which_ret)) return which_ret;
-	strcpy(which_ret,name);
-	strcat(which_ret,bat_ext);
-	if (DOS_FileExists(which_ret)) return which_ret;
+	if (DOS_FileExists(name))
+		return name;
 
+	/* try to find .com .exe .bat */
+	for (const char *ext_fmt : {"%s.COM", "%s.EXE", "%s.BAT"}) {
+		snprintf(which_ret, sizeof(which_ret), ext_fmt, name);
+		if (DOS_FileExists(which_ret))
+			return which_ret;
+	}
 
 	/* No Path in filename look through path environment string */
 	char path[DOS_PATHLENGTH];std::string temp;
@@ -631,19 +620,17 @@ char * DOS_Shell::Which(char * name) {
 
 			//If name too long =>next
 			if((name_len + len + 1) >= DOS_PATHLENGTH) continue;
-			strcat(path,name);
 
-			strcpy(which_ret,path);
-			if (DOS_FileExists(which_ret)) return which_ret;
-			strcpy(which_ret,path);
-			strcat(which_ret,com_ext);
-			if (DOS_FileExists(which_ret)) return which_ret;
-			strcpy(which_ret,path);
-			strcat(which_ret,exe_ext);
-			if (DOS_FileExists(which_ret)) return which_ret;
-			strcpy(which_ret,path);
-			strcat(which_ret,bat_ext);
-			if (DOS_FileExists(which_ret)) return which_ret;
+			safe_strcat(path, name);
+			safe_strcpy(which_ret, path);
+			if (DOS_FileExists(which_ret))
+				return which_ret;
+
+			for (const char *ext_fmt : {"%s.COM", "%s.EXE", "%s.BAT"}) {
+				snprintf(which_ret, sizeof(which_ret), ext_fmt, path);
+				if (DOS_FileExists(which_ret))
+					return which_ret;
+			}
 		}
 	}
 	return 0;

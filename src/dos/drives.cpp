@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2019  The DOSBox Team
+ *  Copyright (C) 2002-2020  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,11 +16,8 @@
  *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  */
 
-
-#include "dosbox.h"
-#include "dos_system.h"
 #include "drives.h"
-#include "mapper.h"
+
 #include "support.h"
 
 bool WildFileCmp(const char * file, const char * wild) 
@@ -76,6 +73,19 @@ checkext:
 	return true;
 }
 
+
+std::string To_Label(const char* name) {
+	// Reformat the name per the DOS label specification:
+	// - Upper-case, up to 11 ASCII characters
+	// - Internal spaces allowed but no: tabs ? / \ | . , ; : + = [ ] < > " '
+	std::string label(name);
+	trim(label); // strip front-and-back white-space
+	strip_punctuation(label); // strip all punctuation
+	label.resize(11); // collapse remainder to (at-most) 11 chars
+	upcase(label);
+	return label;
+}
+
 void Set_Label(char const * const input, char * const output, bool cdrom) {
 	Bitu togo     = 8;
 	Bitu vnamePos = 0;
@@ -106,15 +116,11 @@ void Set_Label(char const * const input, char * const output, bool cdrom) {
 		output[labelPos-1] = 0;
 }
 
-
-
-DOS_Drive::DOS_Drive() {
-	curdir[0]=0;
-	info[0]=0;
-}
-
-char * DOS_Drive::GetInfo(void) {
-	return info;
+DOS_Drive::DOS_Drive()
+	: dirCache()
+{
+	curdir[0] = '\0';
+	info[0] = '\0';
 }
 
 // static members variables

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2019  The DOSBox Team
+ *  Copyright (C) 2002-2020  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -26,6 +26,7 @@
 #include "callback.h"
 #include "debug.h"
 #include "cpu.h"
+#include "programs.h"
 
 const char * RunningProgram="DOSBOX";
 
@@ -309,7 +310,7 @@ bool DOS_Execute(char * name,PhysPt block_pt,Bit8u flags) {
 			if (imagesize+headersize<512) imagesize = 512-headersize;
 		}
 	}
-	Bit8u * loadbuf=(Bit8u *)new Bit8u[0x10000];
+	uint8_t *loadbuf = new uint8_t[0x10000];
 	if (flags!=OVERLAY) {
 		/* Create an environment block */
 		envseg=block.exec.envseg;
@@ -347,6 +348,7 @@ bool DOS_Execute(char * name,PhysPt block_pt,Bit8u flags) {
 				DOS_CloseFile(fhandle);
 				DOS_SetError(DOSERR_INSUFFICIENT_MEMORY);
 				DOS_FreeMemory(envseg);
+				delete [] loadbuf;
 				return false;
 			}
 		}
@@ -398,7 +400,7 @@ bool DOS_Execute(char * name,PhysPt block_pt,Bit8u flags) {
 			mem_writew(address,mem_readw(address)+relocate);
 		}
 	}
-	delete[] loadbuf;
+	delete [] loadbuf;
 	DOS_CloseFile(fhandle);
 
 	/* Setup a psp */
@@ -421,6 +423,8 @@ bool DOS_Execute(char * name,PhysPt block_pt,Bit8u flags) {
 		csip=RealMake(loadseg+head.initCS,head.initIP);
 		sssp=RealMake(loadseg+head.initSS,head.initSP);
 		if (head.initSP<4) LOG(LOG_EXEC,LOG_ERROR)("stack underflow/wrap at EXEC");
+
+		Program::ResetLastWrittenChar('\0'); // triggers newline injection after DOS programs
 	}
 
 	if ((flags==LOAD) || (flags==LOADNGO)) {

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2019  The DOSBox Team
+ *  Copyright (C) 2002-2020  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,18 +16,15 @@
  *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  */
 
-
 #ifndef DOSBOX_CROSS_H
 #define DOSBOX_CROSS_H
 
-#ifndef DOSBOX_DOSBOX_H
 #include "dosbox.h"
-#endif
 
-#include <stdio.h>
+#include <cstdio>
+#include <string>
 #include <sys/stat.h>
 #include <sys/types.h>
-#include <string>
 
 #if defined (_MSC_VER)						/* MS Visual C++ */
 #include <direct.h>
@@ -44,7 +41,7 @@
 #define CROSS_LEN 512						/* Maximum filename size */
 
 
-#if defined (WIN32) || defined (OS2)				/* Win 32 & OS/2*/
+#if defined (WIN32)
 #define CROSS_FILENAME(blah) 
 #define CROSS_FILESPLIT '\\'
 #define F_OK 0
@@ -56,8 +53,21 @@
 #define CROSS_NONE	0
 #define CROSS_FILE	1
 #define CROSS_DIR	2
+
 #if defined (WIN32)
 #define ftruncate(blah,blah2) chsize(blah,blah2)
+#endif
+
+// fileno is a POSIX function (not mentioned in ISO/C++), which means it might
+// be missing when when using C++11 with strict ANSI compatibility.
+// New MSVC issues "deprecation" warning when fileno is used and recommends
+// using (platform-specific) _fileno. On other platforms we can use fileno
+// because it's either a POSIX-compliant system, or the function is available
+// when compiling with GNU extensions.
+#if defined (_MSC_VER)
+#define cross_fileno(s) _fileno(s)
+#else
+#define cross_fileno(s) fileno(s)
 #endif
 
 //Solaris maybe others
@@ -65,6 +75,8 @@
 #include <math.h>
 static inline float powf (float x, float y) { return (float) pow (x,y); }
 #endif
+
+void CROSS_DetermineConfigPaths();
 
 class Cross {
 public:
@@ -76,10 +88,10 @@ public:
 	static bool IsPathAbsolute(std::string const& in);
 };
 
-
 #if defined (WIN32)
-
-#define WIN32_LEAN_AND_MEAN        // Exclude rarely-used stuff from 
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
 #include <windows.h>
 
 typedef struct dir_struct {
@@ -106,4 +118,5 @@ bool read_directory_next(dir_information* dirp, char* entry_name, bool& is_direc
 void close_directory(dir_information* dirp);
 
 FILE *fopen_wrap(const char *path, const char *mode);
+
 #endif

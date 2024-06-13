@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2019  The DOSBox Team
+ *  Copyright (C) 2002-2020  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -156,14 +156,18 @@ AutoexecObject::~AutoexecObject(){
 	this->CreateAutoexec();
 }
 
-DOS_Shell::DOS_Shell():Program(){
-	input_handle=STDIN;
-	echo=true;
-	exit=false;
-	bf=0;
-	call=false;
-	completion_start = NULL;
-}
+DOS_Shell::DOS_Shell()
+	: Program(),
+	  l_history{},
+	  l_completion{},
+	  completion_start(nullptr),
+	  completion_index(0),
+	  input_handle(STDIN),
+	  bf(nullptr),
+	  echo(true),
+	  exit(false),
+	  call(false)
+{}
 
 Bitu DOS_Shell::GetRedirection(char *s, char **ifn, char **ofn,bool * append) {
 
@@ -198,6 +202,11 @@ Bitu DOS_Shell::GetRedirection(char *s, char **ifn, char **ofn,bool * append) {
 //			else
 //				*lr=0;
 			t = (char*)malloc(lr-*ofn+1);
+			if (t == nullptr) {
+				E_Exit("SHELL: Could not allocate %u bytes in parser",
+				       static_cast<unsigned int>(lr-*ofn+1));
+			}
+
 			safe_strncpy(t,*ofn,lr-*ofn+1);
 			*ofn=t;
 			continue;
@@ -212,6 +221,10 @@ Bitu DOS_Shell::GetRedirection(char *s, char **ifn, char **ofn,bool * append) {
 //			else
 //				*lr=0;
 			t = (char*)malloc(lr-*ifn+1);
+			if (t == nullptr) {
+				E_Exit("SHELL: Could not allocate %u bytes in parser",
+				       static_cast<unsigned int>(lr-*ifn+1));
+			}
 			safe_strncpy(t,*ifn,lr-*ifn+1);
 			*ifn=t;
 			continue;
@@ -331,7 +344,10 @@ void DOS_Shell::Run(void) {
 #if C_DEBUG
 		WriteOut(MSG_Get("SHELL_STARTUP_DEBUG"));
 #endif
-		if (machine == MCH_CGA) WriteOut(MSG_Get("SHELL_STARTUP_CGA"));
+		if (machine == MCH_CGA) {
+			if (mono_cga) WriteOut(MSG_Get("SHELL_STARTUP_CGA_MONO"));
+			else WriteOut(MSG_Get("SHELL_STARTUP_CGA"));
+		}
 		if (machine == MCH_HERC) WriteOut(MSG_Get("SHELL_STARTUP_HERC"));
 		WriteOut(MSG_Get("SHELL_STARTUP_END"));
 
@@ -358,7 +374,6 @@ void DOS_Shell::Run(void) {
 			if (echo) ShowPrompt();
 			InputCommand(input_line);
 			ParseLine(input_line);
-			if (echo && !bf) WriteOut_NoParsing("\n");
 		}
 	} while (!exit);
 }
@@ -372,7 +387,10 @@ private:
 	AutoexecObject autoexec[17];
 	AutoexecObject autoexec_echo;
 public:
-	AUTOEXEC(Section* configuration):Module_base(configuration) {
+	AUTOEXEC(Section* configuration)
+		: Module_base(configuration),
+		  autoexec_echo()
+	{
 		/* Register a virtual AUOEXEC.BAT file */
 		std::string line;
 		Section_line * section=static_cast<Section_line *>(configuration);
@@ -409,7 +427,7 @@ public:
 		/* Maximum of extra commands: 10 */
 		Bitu i = 1;
 		while (control->cmdline->FindString("-c",line,true) && (i <= 11)) {
-#if defined (WIN32) || defined (OS2)
+#if defined (WIN32)
 			//replace single with double quotes so that mount commands can contain spaces
 			for(Bitu temp = 0;temp < line.size();++temp) if(line[temp] == '\'') line[temp]='\"';
 #endif //Linux users can simply use \" in their shell
@@ -429,12 +447,12 @@ public:
 		while (control->cmdline->FindCommand(dummy++,line) && !command_found) {
 			struct stat test;
 			if (line.length() > CROSS_LEN) continue;
-			strcpy(buffer,line.c_str());
+			safe_strcpy(buffer, line.c_str());
 			if (stat(buffer,&test)) {
 				if (getcwd(buffer,CROSS_LEN) == NULL) continue;
 				if (strlen(buffer) + line.length() + 1 > CROSS_LEN) continue;
-				strcat(buffer,cross_filesplit);
-				strcat(buffer,line.c_str());
+				safe_strcat(buffer, cross_filesplit);
+				safe_strcat(buffer, line.c_str());
 				if (stat(buffer,&test)) continue;
 			}
 			if (test.st_mode & S_IFDIR) {
@@ -448,8 +466,8 @@ public:
 					line = buffer;
 					if (getcwd(buffer,CROSS_LEN) == NULL) continue;
 					if (strlen(buffer) + line.length() + 1 > CROSS_LEN) continue;
-					strcat(buffer,cross_filesplit);
-					strcat(buffer,line.c_str());
+					safe_strcat(buffer, cross_filesplit);
+					safe_strcat(buffer, line.c_str());
 					if(stat(buffer,&test)) continue;
 					name = strrchr(buffer,CROSS_FILESPLIT);
 					if(!name) continue;
@@ -459,7 +477,7 @@ public:
 				autoexec[12].Install(std::string("MOUNT C \"") + buffer + "\"");
 				autoexec[13].Install("C:");
 				/* Save the non-modified filename (so boot and imgmount can use it (long filenames, case sensivitive)) */
-				strcpy(orig,name);
+				safe_strcpy(orig, name);
 				upcase(name);
 				if(strstr(name,".BAT") != 0) {
 					if(secure) autoexec[14].Install("z:\\config.com -securemode");
@@ -582,12 +600,13 @@ void SHELL_Init() {
 	MSG_Add("SHELL_CMD_GOTO_LABEL_NOT_FOUND","GOTO: Label %s not found.\n");
 	MSG_Add("SHELL_CMD_FILE_NOT_FOUND","File %s not found.\n");
 	MSG_Add("SHELL_CMD_FILE_EXISTS","File %s already exists.\n");
-	MSG_Add("SHELL_CMD_DIR_INTRO","Directory of %s.\n");
-	MSG_Add("SHELL_CMD_DIR_BYTES_USED","%5d File(s) %17s Bytes.\n");
-	MSG_Add("SHELL_CMD_DIR_BYTES_FREE","%5d Dir(s)  %17s Bytes free.\n");
+	MSG_Add("SHELL_CMD_DIR_VOLUME"," Volume in drive %c is %s\n");
+	MSG_Add("SHELL_CMD_DIR_INTRO"," Directory of %s\n");
+	MSG_Add("SHELL_CMD_DIR_BYTES_USED","%16d file(s) %17s bytes\n");
+	MSG_Add("SHELL_CMD_DIR_BYTES_FREE","%16d dir(s)  %17s bytes free\n");
 	MSG_Add("SHELL_EXECUTE_DRIVE_NOT_FOUND","Drive %c does not exist!\nYou must \033[31mmount\033[0m it first. Type \033[1;33mintro\033[0m or \033[1;33mintro mount\033[0m for more information.\n");
 	MSG_Add("SHELL_EXECUTE_ILLEGAL_COMMAND","Illegal command: %s.\n");
-	MSG_Add("SHELL_CMD_PAUSE","Press any key to continue.\n");
+	MSG_Add("SHELL_CMD_PAUSE","Press any key to continue...");
 	MSG_Add("SHELL_CMD_PAUSE_HELP","Waits for 1 keystroke to continue.\n");
 	MSG_Add("SHELL_CMD_COPY_FAILURE","Copy failure : %s.\n");
 	MSG_Add("SHELL_CMD_COPY_SUCCESS","   %d File(s) copied.\n");
@@ -598,7 +617,7 @@ void SHELL_Init() {
 		"\033[44;1m\xC9\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD"
 		"\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD"
 		"\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xBB\n"
-		"\xBA \033[32mWelcome to DOSBox %-8s\033[37m                                         \xBA\n"
+		"\xBA \033[32mWelcome to dosbox-staging %-40s\033[37m \xBA\n"
 		"\xBA                                                                    \xBA\n"
 //		"\xBA DOSBox runs real and protected mode games.                         \xBA\n"
 		"\xBA For a short introduction for new users type: \033[33mINTRO\033[37m                 \xBA\n"
@@ -614,6 +633,9 @@ void SHELL_Init() {
 	        "\xBA \033[31m(Alt-)F11\033[37m changes hue; \033[31mctrl-alt-F11\033[37m selects early/late CGA model.  \xBA\n"
 	        "\xBA                                                                    \xBA\n"
 	);
+	MSG_Add("SHELL_STARTUP_CGA_MONO","\xBA Use \033[31mF11\033[37m to cycle through green, amber, white and paper-white mode, \xBA\n"
+	        "\xBA and \033[31mAlt-F11\033[37m to change contrast/brightness settings.                \xBA\n"
+	);
 	MSG_Add("SHELL_STARTUP_HERC","\xBA Use \033[31mF11\033[37m to cycle through white, amber, and green monochrome color. \xBA\n"
 	        "\xBA                                                                    \xBA\n"
 	);
@@ -622,14 +644,13 @@ void SHELL_Init() {
 	        "\xBA                                                                    \xBA\n"
 	);
 	MSG_Add("SHELL_STARTUP_END",
-	        "\xBA \033[32mHAVE FUN!\033[37m                                                          \xBA\n"
-	        "\xBA \033[32mThe DOSBox Team \033[33mhttp://www.dosbox.com\033[37m                              \xBA\n"
+	        "\xBA \033[33mhttps://dosbox-staging.github.io\033[37m                                   \xBA\n"
 	        "\xC8\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD"
 	        "\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD"
 	        "\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xBC\033[0m\n"
 	        //"\n" //Breaks the startup message if you type a mount and a drive change.
 	);
-	MSG_Add("SHELL_STARTUP_SUB","\n\n\033[32;1mDOSBox %s Command Shell\033[0m\n\n");
+	MSG_Add("SHELL_STARTUP_SUB","\033[32;1mdosbox-staging %s\033[0m\n");
 	MSG_Add("SHELL_CMD_CHDIR_HELP","Displays/changes the current directory.\n");
 	MSG_Add("SHELL_CMD_CHDIR_HELP_LONG","CHDIR [drive:][path]\n"
 	        "CHDIR [..]\n"

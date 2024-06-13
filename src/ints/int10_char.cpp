@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2019  The DOSBox Team
+ *  Copyright (C) 2002-2020  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,14 +16,13 @@
  *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  */
 
-
 /* Character displaying moving functions */
 
-#include "dosbox.h"
+#include "int10.h"
+
 #include "bios.h"
 #include "mem.h"
 #include "inout.h"
-#include "int10.h"
 #include "pic.h"
 #include "callback.h"
 

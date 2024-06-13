@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2019  The DOSBox Team
+ *  Copyright (C) 2002-2020  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,18 +16,19 @@
  *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  */
 
+#include "bios_disk.h"
+
+#include <algorithm>
+#include <cassert>
+#include <utility>
 
 #include "dosbox.h"
 #include "callback.h"
-#include "bios.h"
-#include "bios_disk.h"
 #include "regs.h"
 #include "mem.h"
 #include "dos_inc.h" /* for Drives[] */
-#include "../dos/drives.h"
+#include "drives.h"
 #include "mapper.h"
-
-
 
 diskGeo DiskGeometryList[] = {
 	{ 160,  8, 1, 40, 0},
@@ -56,13 +57,14 @@ static bool swapping_requested;
 void CMOS_SetRegister(Bitu regNr, Bit8u val); //For setting equipment word
 
 /* 2 floppys and 2 harddrives, max */
-imageDisk *imageDiskList[MAX_DISK_IMAGES];
-imageDisk *diskSwap[MAX_SWAPPABLE_DISKS];
-Bit32s swapPosition;
+std::array<std::shared_ptr<imageDisk>, MAX_DISK_IMAGES> imageDiskList;
+std::array<std::shared_ptr<imageDisk>, MAX_SWAPPABLE_DISKS> diskSwap;
+
+unsigned int swapPosition;
 
 void updateDPT(void) {
 	Bit32u tmpheads, tmpcyl, tmpsect, tmpsize;
-	if(imageDiskList[2] != NULL) {
+	if(imageDiskList[2]) {
 		PhysPt dp0physaddr=CALLBACK_PhysPointer(diskparm0);
 		imageDiskList[2]->Get_Geometry(&tmpheads, &tmpcyl, &tmpsect, &tmpsize);
 		phys_writew(dp0physaddr,(Bit16u)tmpcyl);
@@ -77,7 +79,7 @@ void updateDPT(void) {
 		phys_writew(dp0physaddr+0xc,(Bit16u)tmpcyl);
 		phys_writeb(dp0physaddr+0xe,(Bit8u)tmpsect);
 	}
-	if(imageDiskList[3] != NULL) {
+	if(imageDiskList[3]) {
 		PhysPt dp1physaddr=CALLBACK_PhysPointer(diskparm1);
 		imageDiskList[3]->Get_Geometry(&tmpheads, &tmpcyl, &tmpsect, &tmpsize);
 		phys_writew(dp1physaddr,(Bit16u)tmpcyl);
@@ -96,36 +98,37 @@ void incrementFDD(void) {
 		equipment|=(numofdisks<<6);
 	} else equipment|=1;
 	mem_writew(BIOS_CONFIGURATION,equipment);
+	if (IS_EGAVGA_ARCH) equipment &= ~0x30; //EGA/VGA startup display mode differs in CMOS
 	CMOS_SetRegister(0x14, (Bit8u)(equipment&0xff));
 }
 
-void swapInDisks(void) {
-	bool allNull = true;
-	Bit32s diskcount = 0;
-	Bit32s swapPos = swapPosition;
-	Bit32s i;
-
-	/* Check to make sure that  there is at least one setup image */
-	for(i=0;i<MAX_SWAPPABLE_DISKS;i++) {
-		if(diskSwap[i]!=NULL) {
-			allNull = false;
+template<typename T, size_t N>
+static size_t disk_array_prefix_size(const std::array<T, N> &images) {
+	size_t num = 0;
+	for (const auto &disk : images) {
+		if (!disk)
 			break;
-		}
+		num++;
 	}
+	return num;
+}
 
-	/* No disks setup... fail */
-	if (allNull) return;
+void swapInDisks(unsigned int swap_position) {
+	const size_t boot_disks_num = disk_array_prefix_size(diskSwap);
+	if (boot_disks_num == 0)
+		return;
 
-	/* If only one disk is loaded, this loop will load the same disk in dive A and drive B */
-	while(diskcount<2) {
-		if(diskSwap[swapPos] != NULL) {
-			LOG_MSG("Loaded disk %d from swaplist position %d - \"%s\"", diskcount, swapPos, diskSwap[swapPos]->diskname);
-			imageDiskList[diskcount] = diskSwap[swapPos];
-			diskcount++;
-		}
-		swapPos++;
-		if(swapPos>=MAX_SWAPPABLE_DISKS) swapPos=0;
-	}
+	assert(swap_position < boot_disks_num);
+	const unsigned int pos_1 = swap_position;
+	const unsigned int pos_2 = (swap_position + 1) % boot_disks_num;
+
+	imageDiskList[0] = diskSwap[pos_1];
+	LOG_MSG("Loaded disk A from swaplist position %u - \"%s\"",
+	        pos_1, diskSwap[pos_1]->diskname);
+
+	imageDiskList[1] = diskSwap[pos_2];
+	LOG_MSG("Loaded disk B from swaplist position %u - \"%s\"",
+	        pos_2, diskSwap[pos_2]->diskname);
 }
 
 bool getSwapRequest(void) {
@@ -144,8 +147,10 @@ void swapInNextDisk(bool pressed) {
 		if (Drives[i]) Drives[i]->EmptyCache();
 	}
 	swapPosition++;
-	if(diskSwap[swapPosition] == NULL) swapPosition = 0;
-	swapInDisks();
+	if (!diskSwap[swapPosition]) {
+		swapPosition = 0;
+	}
+	swapInDisks(swapPosition);
 	swapping_requested = true;
 }
 
@@ -286,7 +291,7 @@ static bool driveInactive(Bit8u driveNum) {
 		CALLBACK_SCF(true);
 		return true;
 	}
-	if(imageDiskList[driveNum] == NULL) {
+	if(!imageDiskList[driveNum]) {
 		LOG(LOG_BIOS,LOG_ERROR)("Disk %d not active", driveNum);
 		last_status = 0x01;
 		CALLBACK_SCF(true);
@@ -301,18 +306,20 @@ static bool driveInactive(Bit8u driveNum) {
 	return false;
 }
 
+template<typename T, size_t N>
+static bool has_image(const std::array<T, N> &arr) {
+	auto to_bool = [](const T &x) { return bool(x); };
+	return std::any_of(std::begin(arr), std::end(arr), to_bool);
+}
 
 static Bitu INT13_DiskHandler(void) {
 	Bit16u segat, bufptr;
 	Bit8u sectbuf[512];
 	Bit8u  drivenum;
-	Bitu  i,t;
+	Bitu t;
 	last_drive = reg_dl;
 	drivenum = GetDosDriveNumber(reg_dl);
-	bool any_images = false;
-	for(i = 0;i < MAX_DISK_IMAGES;i++) {
-		if(imageDiskList[i]) any_images=true;
-	}
+	const bool any_images = has_image(imageDiskList);
 
 	// unconditionally enable the interrupt flag
 	CALLBACK_SIF(true);
@@ -388,7 +395,7 @@ static Bitu INT13_DiskHandler(void) {
 
 		segat = SegValue(es);
 		bufptr = reg_bx;
-		for(i=0;i<reg_al;i++) {
+		for (Bitu i = 0; i < reg_al; i++) {
 			last_status = imageDiskList[drivenum]->Read_Sector((Bit32u)reg_dh, (Bit32u)(reg_ch | ((reg_cl & 0xc0)<< 2)), (Bit32u)((reg_cl & 63)+i), sectbuf);
 			if((last_status != 0x00) || (killRead)) {
 				LOG_MSG("Error in disk read");
@@ -406,30 +413,26 @@ static Bitu INT13_DiskHandler(void) {
 		CALLBACK_SCF(false);
 		break;
 	case 0x3: /* Write sectors */
-		
 		if(driveInactive(drivenum)) {
 			reg_ah = 0xff;
 			CALLBACK_SCF(true);
 			return CBRET_NONE;
-        }                     
-
-
+		}
 		bufptr = reg_bx;
-		for(i=0;i<reg_al;i++) {
+		for (Bitu i = 0; i < reg_al; i++) {
 			for(t=0;t<imageDiskList[drivenum]->getSectSize();t++) {
 				sectbuf[t] = real_readb(SegValue(es),bufptr);
 				bufptr++;
 			}
-
 			last_status = imageDiskList[drivenum]->Write_Sector((Bit32u)reg_dh, (Bit32u)(reg_ch | ((reg_cl & 0xc0) << 2)), (Bit32u)((reg_cl & 63) + i), &sectbuf[0]);
 			if(last_status != 0x00) {
-            CALLBACK_SCF(true);
+				CALLBACK_SCF(true);
 				return CBRET_NONE;
 			}
-        }
+		}
 		reg_ah = 0x00;
 		CALLBACK_SCF(false);
-        break;
+		break;
 	case 0x04: /* Verify sectors */
 		if (reg_al==0) {
 			reg_ah = 0x01;
@@ -494,12 +497,12 @@ static Bitu INT13_DiskHandler(void) {
 		last_status = 0x00;
 		if (reg_dl&0x80) {	// harddisks
 			reg_dl = 0;
-			if(imageDiskList[2] != NULL) reg_dl++;
-			if(imageDiskList[3] != NULL) reg_dl++;
+			if(imageDiskList[2]) reg_dl++;
+			if(imageDiskList[3]) reg_dl++;
 		} else {		// floppy disks
 			reg_dl = 0;
-			if(imageDiskList[0] != NULL) reg_dl++;
-			if(imageDiskList[1] != NULL) reg_dl++;
+			if(imageDiskList[0]) reg_dl++;
+			if(imageDiskList[1]) reg_dl++;
 		}
 		CALLBACK_SCF(false);
 		break;
@@ -517,11 +520,18 @@ static Bitu INT13_DiskHandler(void) {
 				CALLBACK_SCF(true);
 				return CBRET_NONE;
 			}
-			Bit32u tmpheads, tmpcyl, tmpsect, tmpsize;
-			imageDiskList[drivenum]->Get_Geometry(&tmpheads, &tmpcyl, &tmpsect, &tmpsize);
-			Bit64u largesize = tmpheads*tmpcyl*tmpsect*tmpsize;
-			largesize/=512;
-			Bit32u ts = static_cast<Bit32u>(largesize);
+
+			uint32_t tmpheads, tmpcyl, tmpsect, tmpsize;
+			imageDiskList[drivenum]->Get_Geometry(&tmpheads, &tmpcyl,
+			                                      &tmpsect, &tmpsize);
+			// Store intermediate calculations in 64-bit to avoid
+			// accidental integer overflow on temporary value:
+			uint64_t largesize = tmpheads;
+			largesize *= tmpcyl;
+			largesize *= tmpsect;
+			largesize *= tmpsize;
+			const uint32_t ts = static_cast<uint32_t>(largesize / 512);
+
 			reg_ah = (drivenum <2)?1:3; //With 2 for floppy MSDOS starts calling int 13 ah 16
 			if(reg_ah == 3) {
 				reg_cx = static_cast<Bit16u>(ts >>16);
@@ -569,15 +579,10 @@ void BIOS_SetupDisks(void) {
 	call_int13=CALLBACK_Allocate();	
 	CALLBACK_Setup(call_int13,&INT13_DiskHandler,CB_INT13,"Int 13 Bios disk");
 	RealSetVec(0x13,CALLBACK_RealPointer(call_int13));
-	int i;
-	for(i=0;i<4;i++) {
-		imageDiskList[i] = NULL;
-	}
-
-	for(i=0;i<MAX_SWAPPABLE_DISKS;i++) {
-		diskSwap[i] = NULL;
-	}
-
+	for (auto &disk : imageDiskList)
+		disk.reset();
+	for (auto &disk : diskSwap)
+		disk.reset();
 	diskparm0 = CALLBACK_Allocate();
 	diskparm1 = CALLBACK_Allocate();
 	swapPosition = 0;
@@ -587,7 +592,7 @@ void BIOS_SetupDisks(void) {
 
 	PhysPt dp0physaddr=CALLBACK_PhysPointer(diskparm0);
 	PhysPt dp1physaddr=CALLBACK_PhysPointer(diskparm1);
-	for(i=0;i<16;i++) {
+	for (int i = 0; i < 16; i++) {
 		phys_writeb(dp0physaddr+i,0);
 		phys_writeb(dp1physaddr+i,0);
 	}

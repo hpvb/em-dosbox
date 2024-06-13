@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2019  The DOSBox Team
+ *  Copyright (C) 2002-2020  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -19,7 +19,9 @@
 #ifndef DOSBOX_BIOS_DISK_H
 #define DOSBOX_BIOS_DISK_H
 
+#include <memory>
 #include <stdio.h>
+#include <array>
 #ifndef DOSBOX_MEM_H
 #include "mem.h"
 #endif
@@ -55,6 +57,8 @@ public:
 	Bit8u GetBiosType(void);
 	Bit32u getSectSize(void);
 	imageDisk(FILE *imgFile, const char *imgName, Bit32u imgSizeK, bool isHardDisk);
+	imageDisk(const imageDisk&) = delete; // prevent copy
+	imageDisk& operator=(const imageDisk&) = delete; // prevent assignment
 	~imageDisk() { if(diskimg != NULL) { fclose(diskimg); }	};
 
 	bool hardDrive;
@@ -77,14 +81,25 @@ void incrementFDD(void);
 
 #define MAX_DISK_IMAGES (2 + MAX_HDD_IMAGES)
 
-extern imageDisk *imageDiskList[MAX_DISK_IMAGES];
-extern imageDisk *diskSwap[MAX_SWAPPABLE_DISKS];
-extern Bit32s swapPosition;
+extern std::array<std::shared_ptr<imageDisk>, MAX_DISK_IMAGES> imageDiskList;
+extern std::array<std::shared_ptr<imageDisk>, MAX_SWAPPABLE_DISKS> diskSwap;
+
 extern Bit16u imgDTASeg; /* Real memory location of temporary DTA pointer for fat image disk access */
 extern RealPt imgDTAPtr; /* Real memory location of temporary DTA pointer for fat image disk access */
 extern DOS_DTA *imgDTA;
 
-void swapInDisks(void);
+/**
+ * Insert 2 boot disks starting at swap_position into the drives A and B.
+ *
+ * Selected disks are wrapped around, so swapping in the last boot disk
+ * will place the first disk into drive B.
+ *
+ * When there's only 1 disk, it will be placed into both A and B drives.
+ *
+ * When there's no boot disks loaded, this function has no effect.
+ */
+void swapInDisks(unsigned int swap_position);
+
 void swapInNextDisk(void);
 bool getSwapRequest(void);
 

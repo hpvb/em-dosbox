@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2019  The DOSBox Team
+ *  Copyright (C) 2002-2020  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -17,22 +17,41 @@
  */
 
 
-#include <string.h>
-#include <stdlib.h>
+#include <algorithm>
 #include <assert.h>
+#include <cctype>
 #include <ctype.h>
+#include <cstring>
+#include <functional>
 #include <stdarg.h>
 #include <stdio.h>
-#include <string.h>
-#include <algorithm>
-#include <cctype>
+#include <stdlib.h>
 #include <string>
-  
+#include <stdexcept>
+
 #include "dosbox.h"
 #include "cross.h"
 #include "debug.h"
 #include "support.h"
 #include "video.h"
+
+std::string get_basename(const std::string& filename) {
+	// Guard against corner cases: '', '/', '\', 'a'
+	if (filename.length() <= 1)
+		return filename;
+
+	// Find the last slash, but if not is set to zero
+	size_t slash_pos = filename.find_last_of("/\\");
+
+	// If the slash is the last character
+	if (slash_pos == filename.length() - 1)
+		slash_pos = 0;
+
+	// Otherwise if the slash is found mid-string
+	else if (slash_pos > 0)
+		slash_pos++;
+	return filename.substr(slash_pos);
+}
 
 
 void upcase(std::string &str) {
@@ -50,6 +69,15 @@ void trim(std::string &str) {
 	if (loc != std::string::npos) str.erase(0,loc);
 	loc = str.find_last_not_of(" \r\t\f\n");
 	if (loc != std::string::npos) str.erase(loc+1);
+}
+
+void strip_punctuation(std::string &str) {
+	str.erase(
+		std::remove_if(
+			str.begin(),
+			str.end(),
+			[](unsigned char c){ return std::ispunct(c); }),
+		str.end());
 }
 
 /* 
@@ -96,11 +124,13 @@ char * lowcase(char * str) {
 	return str;
 }
 
-
-
-bool ScanCMDBool(char * cmd,char const * const check) {
-	char * scan=cmd;size_t c_len=strlen(check);
-	while ((scan=strchr(scan,'/'))) {
+bool ScanCMDBool(char * cmd, char const * const check)
+{
+	if (cmd == nullptr)
+		return false;
+	char *scan = cmd;
+	const size_t c_len = strlen(check);
+	while ((scan = strchr(scan,'/'))) {
 		/* found a / now see behind it */
 		scan++;
 		if (strncasecmp(scan,check,c_len)==0 && (scan[c_len]==' ' || scan[c_len]=='\t' || scan[c_len]=='/' || scan[c_len]==0)) {
@@ -189,10 +219,5 @@ void E_Exit(const char * format,...) {
 	buf[sizeof(buf) - 1] = '\0';
 	//strcat(buf,"\n"); catcher should handle the end of line.. 
 
-#ifdef EMSCRIPTEN
-	puts(buf);
-	em_exit(1);
-#else
 	throw(buf);
-#endif
 }

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2019  The DOSBox Team
+ *  Copyright (C) 2002-2020  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -19,6 +19,11 @@
 #ifndef DOSBOX_MAPPER_H
 #define DOSBOX_MAPPER_H
 
+#include <string>
+#include <vector>
+#include "setup.h"
+#include "config.h"
+
 enum MapKeys {
 	MK_f1,MK_f2,MK_f3,MK_f4,MK_f5,MK_f6,MK_f7,MK_f8,MK_f9,MK_f10,MK_f11,MK_f12,
 	MK_return,MK_kpminus,MK_scrolllock,MK_printscreen,MK_pause,MK_home
@@ -28,11 +33,17 @@ enum MapKeys {
 typedef void (MAPPER_Handler)(bool pressed);
 void MAPPER_AddHandler(MAPPER_Handler * handler,MapKeys key,Bitu mods,char const * const eventname,char const * const buttonname);
 void MAPPER_Init(void);
+void MAPPER_BindKeys();
 void MAPPER_StartUp(Section * sec);
 void MAPPER_Run(bool pressed);
 void MAPPER_RunInternal();
-void MAPPER_LosingFocus(void);
-
+void MAPPER_DisplayUI();
+void MAPPER_LosingFocus();
+bool MAPPER_IsUsingJoysticks();
+std::vector<std::string> MAPPER_GetEventNames(const std::string &prefix);
+void MAPPER_AutoType(std::vector<std::string> &sequence,
+                     const uint32_t wait_ms,
+                     const uint32_t pacing_ms);
 
 #define MMOD1 0x1
 #define MMOD2 0x2

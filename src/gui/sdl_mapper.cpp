@@ -1781,6 +1781,26 @@ static void SetActiveEvent(CEvent * event) {
 	}
 }
 
+std::vector<std::string> MAPPER_GetEventNames(const std::string &prefix) {
+        std::vector<std::string> key_names;
+        key_names.reserve(events.size());
+        for (auto & e : events) {
+                const std::string name = e->GetName();
+                const std::size_t found = name.find(prefix);
+                if (found != std::string::npos) {
+                        const std::string key_name = name.substr(found + prefix.length());
+                        key_names.push_back(key_name);
+                }
+        }
+        return key_names;
+}
+
+void MAPPER_AutoType(std::vector<std::string> &sequence,
+                     const uint32_t wait_ms,
+                     const uint32_t pace_ms) {
+//        mapper.typist.Start(&events, sequence, wait_ms, pace_ms);
+}
+
 #if SDL_VERSION_ATLEAST(2,0,0)
 extern SDL_Window * GFX_SetSDLSurfaceWindow(Bit16u width, Bit16u height);
 extern SDL_Rect GFX_GetSDLSurfaceSubwindowDims(Bit16u width, Bit16u height);

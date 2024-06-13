@@ -35,7 +35,7 @@
 "Reboot_Handler()",
 "DOS_LoadKeyboardLayout(char const*, int, char const*)",
 "DOS_KeyboardLayout_Init(Section*)",
-"DOS_SwitchKeyboardLayout(char const*, int&)",
+"DOS_SwitchKeyboardLayout(const char*, int&)",
 "keyboard_layout::read_codepage_file(char const*, int)",
 "keyboard_layout::switch_keyboard_layout(char const*, keyboard_layout*&, int&)",
 "DOS_KeyboardLayout::DOS_KeyboardLayout(Section*)",

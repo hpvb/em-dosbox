@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2019  The DOSBox Team
+ *  Copyright (C) 2002-2020  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,23 +16,16 @@
  *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  */
 
-
 #ifndef DOSBOX_DOS_SYSTEM_H
 #define DOSBOX_DOS_SYSTEM_H
 
-#include <vector>
-#ifndef DOSBOX_DOSBOX_H
 #include "dosbox.h"
-#endif
-#ifndef DOSBOX_CROSS_H
+
+#include <vector>
+
 #include "cross.h"
-#endif
-#ifndef DOSBOX_SUPPORT_H
-#include "support.h"
-#endif
-#ifndef DOSBOX_MEM_H
 #include "mem.h"
-#endif
+#include "support.h"
 
 #define DOS_NAMELENGTH 12
 #define DOS_NAMELENGTH_ASCII (DOS_NAMELENGTH+1)
@@ -78,6 +71,7 @@ public:
 	virtual void	AddRef()					{ refCtr++; };
 	virtual Bits	RemoveRef()					{ return --refCtr; };
 	virtual bool	UpdateDateTimeFromHost()	{ return true; }
+	virtual void SetFlagReadOnlyMedium() {}
 	void SetDrive(Bit8u drv) { hdrive=drv;}
 	Bit8u GetDrive(void) { return hdrive;}
 	Bit32u flags;
@@ -94,9 +88,11 @@ private:
 
 class DOS_Device : public DOS_File {
 public:
-	DOS_Device(const DOS_Device& orig):DOS_File(orig) {
-		devnum=orig.devnum;
-		open=true;
+	DOS_Device(const DOS_Device& orig)
+		: DOS_File(orig),
+		  devnum(orig.devnum)
+	{
+		open = true;
 	}
 	DOS_Device & operator= (const DOS_Device & orig) {
 		DOS_File::operator=(orig);
@@ -119,15 +115,17 @@ private:
 
 class localFile : public DOS_File {
 public:
-	localFile(const char* name, FILE * handle);
-	bool Read(Bit8u * data,Bit16u * size);
-	bool Write(Bit8u * data,Bit16u * size);
-	bool Seek(Bit32u * pos,Bit32u type);
-	bool Close();
-	Bit16u GetInformation(void);
-	bool UpdateDateTimeFromHost(void);   
-	void FlagReadOnlyMedium(void);
-	void Flush(void);
+	localFile                   (const char* name, FILE * handle);
+	localFile                   (const localFile&) = delete; // prevent copying
+	localFile& operator=        (const localFile&) = delete; // prevent assignment
+	bool Read                   (Bit8u * data,Bit16u * size);
+	bool Write                  (Bit8u * data,Bit16u * size);
+	bool Seek                   (Bit32u * pos,Bit32u type);
+	bool Close                  (void);
+	Bit16u GetInformation       (void);
+	bool UpdateDateTimeFromHost (void);
+	void Flush                  (void);
+	void SetFlagReadOnlyMedium  () { read_only_medium = true; }
 	FILE * fhandle; //todo handle this properly
 private:
 	bool read_only_medium;
@@ -142,57 +140,66 @@ private:
 
 class DOS_Drive_Cache {
 public:
-	DOS_Drive_Cache					(void);
-	DOS_Drive_Cache					(const char* path);
-	~DOS_Drive_Cache				(void);
-
 	enum TDirSort { NOSORT, ALPHABETICAL, DIRALPHABETICAL, ALPHABETICALREV, DIRALPHABETICALREV };
+	DOS_Drive_Cache            (void);
+	DOS_Drive_Cache            (const char* path);
+	DOS_Drive_Cache            (const DOS_Drive_Cache&) = delete; // prevent copying
+	DOS_Drive_Cache& operator= (const DOS_Drive_Cache&) = delete; // prevent assignment
+	~DOS_Drive_Cache           (void);
 
-	void		SetBaseDir			(const char* path);
-	void		SetDirSort			(TDirSort sort) { sortDirType = sort; };
-	bool		OpenDir				(const char* path, Bit16u& id);
-	bool		ReadDir				(Bit16u id, char* &result);
+	void  SetBaseDir           (const char* path);
+	void  SetDirSort           (TDirSort sort) { sortDirType = sort; };
+	bool  OpenDir              (const char* path, Bit16u& id);
+	bool  ReadDir              (Bit16u id, char* &result);
 
-	void		ExpandName			(char* path);
-	char*		GetExpandName		(const char* path);
-	bool		GetShortName		(const char* fullname, char* shortname);
+	void  ExpandName           (char* path);
+	char* GetExpandName        (const char* path);
+	bool  GetShortName         (const char* fullname, char* shortname);
 
-	bool		FindFirst			(char* path, Bit16u& id);
-	bool		FindNext			(Bit16u id, char* &result);
+	bool  FindFirst            (char* path, Bit16u& id);
+	bool  FindNext             (Bit16u id, char* &result);
 
-	void		CacheOut			(const char* path, bool ignoreLastDir = false);
-	void		AddEntry			(const char* path, bool checkExist = false);
-	void		AddEntryDirOverlay			(const char* path, bool checkExist = false);
+	void  CacheOut             (const char* path, bool ignoreLastDir = false);
+	void  AddEntry             (const char* path, bool checkExist = false);
+	void  AddEntryDirOverlay   (const char* path, bool checkExist = false);
 
-	void		DeleteEntry			(const char* path, bool ignoreLastDir = false);
+	void  DeleteEntry          (const char* path, bool ignoreLastDir = false);
+	void  EmptyCache           (void);
 
-	void		EmptyCache			(void);
-	void		SetLabel			(const char* name,bool cdrom,bool allowupdate);
-	char*		GetLabel			(void) { return label; };
+	void  SetLabel             (const char* name,bool cdrom,bool allowupdate);
+	char* GetLabel             (void) { return label; };
 
 	class CFileInfo {
 	public:
-		CFileInfo(void) {
-			orgname[0] = shortname[0] = 0;
-			isOverlayDir = isDir = false;
-			id = MAX_OPENDIRS;
-			nextEntry = shortNr = 0;
+		CFileInfo(void)
+			: orgname{0},
+			  shortname{0},
+			  isOverlayDir(false),
+			  isDir(false),
+			  id(MAX_OPENDIRS),
+			  nextEntry(0),
+			  shortNr(0),
+			  fileList(0),
+			  longNameList(0)
+		{
 		}
 		~CFileInfo(void) {
-			for (Bit32u i=0; i<fileList.size(); i++) delete fileList[i];
+			for (auto p : fileList) {
+				delete p;
+			}
 			fileList.clear();
 			longNameList.clear();
 		};
-		char		orgname		[CROSS_LEN];
-		char		shortname	[DOS_NAMELENGTH_ASCII];
-		bool		isOverlayDir;
-		bool		isDir;
-		Bit16u		id;
-		Bitu		nextEntry;
-		Bitu		shortNr;
+		char        orgname[CROSS_LEN];
+		char        shortname[DOS_NAMELENGTH_ASCII];
+		bool        isOverlayDir;
+		bool        isDir;
+		Bit16u      id;
+		Bitu        nextEntry;
+		unsigned    shortNr;
 		// contents
-		std::vector<CFileInfo*>	fileList;
-		std::vector<CFileInfo*>	longNameList;
+		std::vector<CFileInfo*> fileList;
+		std::vector<CFileInfo*> longNameList;
 	};
 
 private:
@@ -200,9 +207,9 @@ private:
 	void DeleteFileInfo(CFileInfo *dir);
 
 	bool		RemoveTrailingDot	(char* shortname);
-	Bits		GetLongName		(CFileInfo* info, char* shortname);
+	Bits		GetLongName		(CFileInfo* info, char* shortname, const size_t shortname_len);
 	void		CreateShortName		(CFileInfo* dir, CFileInfo* info);
-	Bitu		CreateShortNameID	(CFileInfo* dir, const char* name);
+	unsigned        CreateShortNameID       (CFileInfo* dir, const char* name);
 	int		CompareShortname	(const char* compareName, const char* shortName);
 	bool		SetResult		(CFileInfo* dir, char * &result, Bitu entryNr);
 	bool		IsCachedIn		(CFileInfo* dir);
@@ -217,7 +224,6 @@ private:
 	CFileInfo*	dirBase;
 	char		dirPath				[CROSS_LEN];
 	char		basePath			[CROSS_LEN];
-	bool		dirFirstTime;
 	TDirSort	sortDirType;
 	CFileInfo*	save_dir;
 	char		save_path			[CROSS_LEN];
@@ -225,7 +231,6 @@ private:
 
 	Bit16u		srchNr;
 	CFileInfo*	dirSearch			[MAX_OPENDIRS];
-	char		dirSearchName		[MAX_OPENDIRS];
 	CFileInfo*	dirFindFirst		[MAX_OPENDIRS];
 	Bit16u		nextFreeFindFirst;
 
@@ -257,7 +262,8 @@ public:
 	virtual bool isRemovable(void)=0;
 	virtual Bits UnMount(void)=0;
 
-	char * GetInfo(void);
+	const char * GetInfo() const { return info; }
+
 	char curdir[DOS_PATHLENGTH];
 	char info[256];
 	/* Can be overridden for example in iso images */
@@ -288,4 +294,5 @@ void DOS_AddDevice(DOS_Device * adddev);
 void DOS_DelDevice(DOS_Device * dev);
 
 void VFILE_Register(const char * name,Bit8u * data,Bit32u size);
+
 #endif

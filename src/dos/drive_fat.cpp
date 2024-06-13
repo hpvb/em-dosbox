@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2019  The DOSBox Team
+ *  Copyright (C) 2002-2020  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -21,6 +21,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+
 #include "dosbox.h"
 #include "dos_inc.h"
 #include "drives.h"
@@ -40,6 +41,8 @@
 class fatFile : public DOS_File {
 public:
 	fatFile(const char* name, Bit32u startCluster, Bit32u fileLen, fatDrive *useDrive);
+	fatFile(const fatFile&) = delete; // prevent copy
+	fatFile& operator=(const fatFile&) = delete; // prevent assignment
 	bool Read(Bit8u * data,Bit16u * size);
 	bool Write(Bit8u * data,Bit16u * size);
 	bool Seek(Bit32u * pos,Bit32u type);
@@ -59,9 +62,6 @@ public:
 
 	bool loadedSector;
 	fatDrive *myDrive;
-private:
-	enum { NONE,READ,WRITE } last_action;
-	Bit16u info;
 };
 
 
@@ -70,7 +70,7 @@ private:
 static void convToDirFile(char *filename, char *filearray) {
 	Bit32u charidx = 0;
 	Bit32u flen,i;
-	flen = (Bit32u)strlen(filename);
+	flen = (Bit32u)strnlen(filename, DOS_NAMELENGTH_ASCII);
 	memset(filearray, 32, 11);
 	for(i=0;i<flen;i++) {
 		if(charidx >= 11) break;
@@ -83,17 +83,23 @@ static void convToDirFile(char *filename, char *filearray) {
 	}
 }
 
-fatFile::fatFile(const char* /*name*/, Bit32u startCluster, Bit32u fileLen, fatDrive *useDrive) {
+fatFile::fatFile(const char* /*name*/,
+                 Bit32u startCluster,
+                 Bit32u fileLen,
+                 fatDrive *useDrive)
+	: firstCluster(startCluster),
+	  seekpos(0),
+	  filelength(fileLen),
+	  currentSector(0),
+	  curSectOff(0),
+	  sectorBuffer{0},
+	  dirCluster(0),
+	  dirIndex(0),
+	  loadedSector(false),
+	  myDrive(useDrive)
+{
 	Bit32u seekto = 0;
-	firstCluster = startCluster;
-	myDrive = useDrive;
-	filelength = fileLen;
 	open = true;
-	loadedSector = false;
-	curSectOff = 0;
-	seekpos = 0;
-	memset(&sectorBuffer[0], 0, sizeof(sectorBuffer));
-	
 	if(filelength > 0) {
 		Seek(&seekto, DOS_SEEK_SET);
 	}
@@ -223,20 +229,12 @@ bool fatFile::Write(Bit8u * data, Bit16u *size) {
 			if(loadedSector) myDrive->writeSector(currentSector, sectorBuffer);
 
 			currentSector = myDrive->getAbsoluteSectFromBytePos(firstCluster, seekpos);
-			if(currentSector == 0) {
-				/* EOC reached before EOF - try to increase file allocation */
-				myDrive->appendCluster(firstCluster);
-				/* Try getting sector again */
-				currentSector = myDrive->getAbsoluteSectFromBytePos(firstCluster, seekpos);
-				if(currentSector == 0) {
-					/* No can do. lets give up and go home.  We must be out of room */
-					loadedSector = false;
-					goto finalizeWrite;
-				}
+			if(currentSector == 0) loadedSector = false;
+			else {
+				curSectOff = 0;
+				myDrive->readSector(currentSector, sectorBuffer);
+				loadedSector = true;
 			}
-			curSectOff = 0;
-			myDrive->readSector(currentSector, sectorBuffer);
-			loadedSector = true;
 		}
 		--sizedec;
 	}
@@ -333,7 +331,7 @@ Bit32u fatDrive::getClusterValue(Bit32u clustNum) {
 
 	switch(fattype) {
 		case FAT12:
-			clustValue = *((Bit16u *)&fatSectBuffer[fatentoff]);
+			clustValue = var_read((Bit16u *)&fatSectBuffer[fatentoff]);
 			if(clustNum & 0x1) {
 				clustValue >>= 4;
 			} else {
@@ -341,10 +339,10 @@ Bit32u fatDrive::getClusterValue(Bit32u clustNum) {
 			}
 			break;
 		case FAT16:
-			clustValue = *((Bit16u *)&fatSectBuffer[fatentoff]);
+			clustValue = var_read((Bit16u *)&fatSectBuffer[fatentoff]);
 			break;
 		case FAT32:
-			clustValue = *((Bit32u *)&fatSectBuffer[fatentoff]);
+			clustValue = var_read((Bit32u *)&fatSectBuffer[fatentoff]);
 			break;
 	}
 
@@ -380,7 +378,7 @@ void fatDrive::setClusterValue(Bit32u clustNum, Bit32u clustValue) {
 
 	switch(fattype) {
 		case FAT12: {
-			Bit16u tmpValue = *((Bit16u *)&fatSectBuffer[fatentoff]);
+			Bit16u tmpValue = var_read((Bit16u *)&fatSectBuffer[fatentoff]);
 			if(clustNum & 0x1) {
 				clustValue &= 0xfff;
 				clustValue <<= 4;
@@ -392,14 +390,14 @@ void fatDrive::setClusterValue(Bit32u clustNum, Bit32u clustValue) {
 				tmpValue &= 0xf000;
 				tmpValue |= (Bit16u)clustValue;
 			}
-			*((Bit16u *)&fatSectBuffer[fatentoff]) = tmpValue;
+			var_write((Bit16u *)&fatSectBuffer[fatentoff], tmpValue);
 			break;
 			}
 		case FAT16:
-			*((Bit16u *)&fatSectBuffer[fatentoff]) = (Bit16u)clustValue;
+			var_write((Bit16u *)&fatSectBuffer[fatentoff], (Bit16u)clustValue);
 			break;
 		case FAT32:
-			*((Bit32u *)&fatSectBuffer[fatentoff]) = clustValue;
+			var_write((Bit32u *)&fatSectBuffer[fatentoff], clustValue);
 			break;
 	}
 	for(int fc=0;fc<bootbuffer.fatcopies;fc++) {
@@ -416,7 +414,7 @@ bool fatDrive::getEntryName(char *fullname, char *entname) {
 
 	char * findDir;
 	char * findFile;
-	strcpy(dirtoken,fullname);
+	safe_strcpy(dirtoken, fullname);
 
 	//LOG_MSG("Testing for filename %s", fullname);
 	findDir = strtok(dirtoken,"\\");
@@ -428,19 +426,19 @@ bool fatDrive::getEntryName(char *fullname, char *entname) {
 		findFile = findDir;
 		findDir = strtok(NULL,"\\");
 	}
-	strcpy(entname, findFile);
+	strncpy(entname, findFile, DOS_NAMELENGTH_ASCII);
 	return true;
 }
 
 bool fatDrive::getFileDirEntry(char const * const filename, direntry * useEntry, Bit32u * dirClust, Bit32u * subEntry) {
-	size_t len = strlen(filename);
+	size_t len = strnlen(filename, DOS_PATHLENGTH);
 	char dirtoken[DOS_PATHLENGTH];
 	Bit32u currentClust = 0;
 
 	direntry foundEntry;
 	char * findDir;
 	char * findFile;
-	strcpy(dirtoken,filename);
+	safe_strcpy(dirtoken, filename);
 	findFile=dirtoken;
 
 	/* Skip if testing in root directory */
@@ -474,18 +472,18 @@ bool fatDrive::getFileDirEntry(char const * const filename, direntry * useEntry,
 	if(!FindNextInternal(currentClust, *imgDTA, &foundEntry)) return false;
 
 	memcpy(useEntry, &foundEntry, sizeof(direntry));
-	*dirClust = (Bit32u)currentClust;
+	*dirClust = currentClust;
 	*subEntry = ((Bit32u)imgDTA->GetDirID()-1);
 	return true;
 }
 
 bool fatDrive::getDirClustNum(char *dir, Bit32u *clustNum, bool parDir) {
-	Bit32u len = (Bit32u)strlen(dir);
+	Bit32u len = (Bit32u)strnlen(dir, DOS_PATHLENGTH);
 	char dirtoken[DOS_PATHLENGTH];
 	Bit32u currentClust = 0;
 	direntry foundEntry;
 	char * findDir;
-	strcpy(dirtoken,dir);
+	safe_strcpy(dirtoken, dir);
 
 	/* Skip if testing for root directory */
 	if ((len>0) && (dir[len-1]!='\\')) {
@@ -516,17 +514,31 @@ bool fatDrive::getDirClustNum(char *dir, Bit32u *clustNum, bool parDir) {
 }
 
 Bit8u fatDrive::readSector(Bit32u sectnum, void * data) {
-	if (absolute) return loadedDisk->Read_AbsoluteSector(sectnum, data);
+	// Guard
+	if (!loadedDisk) {
+		return 0;
+	}
+
+	if (absolute) {
+		return loadedDisk->Read_AbsoluteSector(sectnum, data);
+	}
 	Bit32u cylindersize = bootbuffer.headcount * bootbuffer.sectorspertrack;
 	Bit32u cylinder = sectnum / cylindersize;
 	sectnum %= cylindersize;
 	Bit32u head = sectnum / bootbuffer.sectorspertrack;
 	Bit32u sector = sectnum % bootbuffer.sectorspertrack + 1L;
 	return loadedDisk->Read_Sector(head, cylinder, sector, data);
-}	
+}
 
 Bit8u fatDrive::writeSector(Bit32u sectnum, void * data) {
-	if (absolute) return loadedDisk->Write_AbsoluteSector(sectnum, data);
+	// Guard
+	if (!loadedDisk) {
+		return 0;
+	}
+
+	if (absolute) {
+		return loadedDisk->Write_AbsoluteSector(sectnum, data);
+	}
 	Bit32u cylindersize = bootbuffer.headcount * bootbuffer.sectorspertrack;
 	Bit32u cylinder = sectnum / cylindersize;
 	sectnum %= cylindersize;
@@ -692,8 +704,25 @@ bool fatDrive::allocateCluster(Bit32u useCluster, Bit32u prevCluster) {
 	return true;
 }
 
-fatDrive::fatDrive(const char *sysFilename, Bit32u bytesector, Bit32u cylsector, Bit32u headscyl, Bit32u cylinders, Bit32u startSector) {
-	created_successfully = true;
+fatDrive::fatDrive(const char *sysFilename,
+                   Bit32u bytesector,
+                   Bit32u cylsector,
+                   Bit32u headscyl,
+                   Bit32u cylinders,
+                   Bit32u startSector)
+	: loadedDisk(nullptr),
+	  created_successfully(true),
+	  bootbuffer{{0}, {0}, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, {0}, 0, 0},
+	  absolute(false),
+	  fattype(0),
+	  CountOfClusters(0),
+	  partSectOff(0),
+	  firstDataSector(0),
+	  firstRootDirSect(0),
+	  cwdDirCluster(0),
+	  fatSectBuffer{0},
+	  curFatSect(0)
+{
 	FILE *diskfile;
 	Bit32u filesize;
 	bool is_hdd;
@@ -706,17 +735,16 @@ fatDrive::fatDrive(const char *sysFilename, Bit32u bytesector, Bit32u cylsector,
 	}
 
 	diskfile = fopen_wrap(sysFilename, "rb+");
-	if(!diskfile) {created_successfully = false;return;}
+	if (!diskfile) {
+		created_successfully = false;
+		return;
+	}
 	fseek(diskfile, 0L, SEEK_END);
 	filesize = (Bit32u)ftell(diskfile) / 1024L;
 	is_hdd = (filesize > 2880);
 
 	/* Load disk image */
-	loadedDisk = new imageDisk(diskfile, sysFilename, filesize, is_hdd);
-	if(!loadedDisk) {
-		created_successfully = false;
-		return;
-	}
+	loadedDisk.reset(new imageDisk(diskfile, sysFilename, filesize, is_hdd));
 
 	if(is_hdd) {
 		/* Set user specified harddrive parameters */
@@ -731,6 +759,8 @@ fatDrive::fatDrive(const char *sysFilename, Bit32u bytesector, Bit32u cylsector,
 		for(m=0;m<4;m++) {
 			/* Pick the first available partition */
 			if(mbrData.pentry[m].partSize != 0x00) {
+				mbrData.pentry[m].absSectStart = host_to_le(mbrData.pentry[m].absSectStart);
+				mbrData.pentry[m].partSize     = host_to_le(mbrData.pentry[m].partSize);
 				LOG_MSG("Using partition %d on drive; skipping %d sectors", m, mbrData.pentry[m].absSectStart);
 				startSector = mbrData.pentry[m].absSectStart;
 				break;
@@ -754,6 +784,16 @@ fatDrive::fatDrive(const char *sysFilename, Bit32u bytesector, Bit32u cylsector,
 	}
 
 	loadedDisk->Read_AbsoluteSector(0+partSectOff,&bootbuffer);
+
+	bootbuffer.bytespersector    = host_to_le(bootbuffer.bytespersector);
+	bootbuffer.reservedsectors   = host_to_le(bootbuffer.reservedsectors);
+	bootbuffer.rootdirentries    = host_to_le(bootbuffer.rootdirentries);
+	bootbuffer.totalsectorcount  = host_to_le(bootbuffer.totalsectorcount);
+	bootbuffer.sectorsperfat     = host_to_le(bootbuffer.sectorsperfat);
+	bootbuffer.sectorspertrack   = host_to_le(bootbuffer.sectorspertrack);
+	bootbuffer.headcount         = host_to_le(bootbuffer.headcount);
+	bootbuffer.hiddensectorcount = host_to_le(bootbuffer.hiddensectorcount);
+	bootbuffer.totalsecdword     = host_to_le(bootbuffer.totalsecdword);
 
 	if (!is_hdd) {
 		/* Identify floppy format */
@@ -864,30 +904,43 @@ fatDrive::fatDrive(const char *sysFilename, Bit32u bytesector, Bit32u cylsector,
 	memset(fatSectBuffer,0,1024);
 	curFatSect = 0xffffffff;
 
-	strcpy(info, "fatDrive ");
-	strcat(info, sysFilename);
+	safe_strcpy(info, "fatDrive ");
+	safe_strcat(info, sysFilename);
 }
 
 bool fatDrive::AllocationInfo(Bit16u *_bytes_sector, Bit8u *_sectors_cluster, Bit16u *_total_clusters, Bit16u *_free_clusters) {
+	// Guard
+	if (!loadedDisk) {
+		return false;
+	}
+
 	Bit32u hs, cy, sect,sectsize;
 	Bit32u countFree = 0;
 	Bit32u i;
-	
+
 	loadedDisk->Get_Geometry(&hs, &cy, &sect, &sectsize);
 	*_bytes_sector = (Bit16u)sectsize;
 	*_sectors_cluster = bootbuffer.sectorspercluster;
-	if (CountOfClusters<65536) *_total_clusters = (Bit16u)CountOfClusters;
-	else {
+
+	if (CountOfClusters<65536) {
+		*_total_clusters = (Bit16u)CountOfClusters;
+	} else {
 		// maybe some special handling needed for fat32
 		*_total_clusters = 65535;
 	}
-	for(i=0;i<CountOfClusters;i++) if(!getClusterValue(i+2)) countFree++;
-	if (countFree<65536) *_free_clusters = (Bit16u)countFree;
-	else {
+
+	for (i=0; i<CountOfClusters; i++) {
+		if (!getClusterValue(i + 2)) {
+			countFree++;
+		}
+	}
+
+	if (countFree<65536) {
+		*_free_clusters = (Bit16u)countFree;
+	} else {
 		// maybe some special handling needed for fat32
 		*_free_clusters = 65535;
 	}
-	
 	return true;
 }
 
@@ -909,13 +962,16 @@ Bits fatDrive::UnMount(void) {
 	return 0;
 }
 
-Bit8u fatDrive::GetMediaByte(void) { return loadedDisk->GetBiosType(); }
+Bit8u fatDrive::GetMediaByte(void) {
+	return loadedDisk ? loadedDisk->GetBiosType() : 0;
+}
 
+// name can be a full DOS path with filename, up-to DOS_PATHLENGTH in length
 bool fatDrive::FileCreate(DOS_File **file, char *name, Bit16u attributes) {
 	direntry fileEntry;
 	Bit32u dirClust, subEntry;
 	char dirName[DOS_NAMELENGTH_ASCII];
-	char pathName[11];
+	char pathName[11]; // pathName is actually just the filename, without path
 
 	Bit16u save_errorcode=dos.errorcode;
 
@@ -1021,22 +1077,39 @@ bool fatDrive::FindFirst(char *_dir, DOS_DTA &dta,bool /*fcb_findfirst*/) {
 	return FindNextInternal(cwdDirCluster, dta, &dummyClust);
 }
 
-char* removeTrailingSpaces(char* str) {
-	char* end = str + strlen(str);
-	while((*--end == ' ') && (end > str)) {};
+char* removeTrailingSpaces(char* str, const size_t max_len) {
+	char* end = str + strnlen(str, max_len);
+	while((*--end == ' ') && (end > str)) {
+		/* do nothing; break on while criteria */
+	}
 	*++end = '\0';
 	return str;
 }
 
-char* removeLeadingSpaces(char* str) {
-	size_t len = strlen(str);
-	size_t pos = strspn(str," ");
-	memmove(str,str + pos,len - pos + 1);
+char* removeLeadingSpaces(char* str, const size_t max_len) {
+	const size_t len = strnlen(str, max_len);
+	const size_t pos = strspn(str, " ");
+	memmove(str, str + pos, len - pos + 1);
 	return str;
 }
 
-char* trimString(char* str) {
-	return removeTrailingSpaces(removeLeadingSpaces(str));
+char* trimString(char* str, const size_t max_len) {
+	return removeTrailingSpaces(removeLeadingSpaces(str, max_len), max_len);
+}
+
+static void copyDirEntry(const direntry *src, direntry *dst) {
+	memcpy(dst->entryname, src->entryname, sizeof(src->entryname));
+	dst->attrib           = host_to_le(src->attrib);
+	dst->NTRes            = host_to_le(src->NTRes);
+	dst->milliSecondStamp = host_to_le(src->milliSecondStamp);
+	dst->crtTime          = host_to_le(src->crtTime);
+	dst->crtDate          = host_to_le(src->crtDate);
+	dst->accessDate       = host_to_le(src->accessDate);
+	dst->hiFirstClust     = host_to_le(src->hiFirstClust);
+	dst->modTime          = host_to_le(src->modTime);
+	dst->modDate          = host_to_le(src->modDate);
+	dst->loFirstClust     = host_to_le(src->loFirstClust);
+	dst->entrysize        = host_to_le(src->entrysize);
 }
 
 bool fatDrive::FindNextInternal(Bit32u dirClustNumber, DOS_DTA &dta, direntry *foundEntry) {
@@ -1087,13 +1160,13 @@ nextfile:
 	memset(extension,0,4);
 	memcpy(find_name,&sectbuf[entryoffset].entryname[0],8);
 	memcpy(extension,&sectbuf[entryoffset].entryname[8],3);
-	trimString(&find_name[0]);
-	trimString(&extension[0]);
+	trimString(&find_name[0], sizeof(find_name));
+	trimString(&extension[0], sizeof(extension));
 	
 	//if(!(sectbuf[entryoffset].attrib & DOS_ATTR_DIRECTORY))
 	if (extension[0]!=0) {
-		strcat(find_name, ".");
-		strcat(find_name, extension);
+		safe_strcat(find_name, ".");
+		safe_strcat(find_name, extension);
 	}
 
 	/* Compare attributes to search attributes */
@@ -1110,11 +1183,11 @@ nextfile:
 	/* Compare name to search pattern */
 	if(!WildFileCmp(find_name,srch_pattern)) goto nextfile;
 
-	//dta.SetResult(find_name, sectbuf[entryoffset].entrysize, sectbuf[entryoffset].crtDate, sectbuf[entryoffset].crtTime, sectbuf[entryoffset].attrib);
+	copyDirEntry(&sectbuf[entryoffset], foundEntry);
 
-	dta.SetResult(find_name, sectbuf[entryoffset].entrysize, sectbuf[entryoffset].modDate, sectbuf[entryoffset].modTime, sectbuf[entryoffset].attrib);
+	//dta.SetResult(find_name, foundEntry->entrysize, foundEntry->crtDate, foundEntry->crtTime, foundEntry->attrib);
 
-	memcpy(foundEntry, &sectbuf[entryoffset], sizeof(direntry));
+	dta.SetResult(find_name, foundEntry->entrysize, foundEntry->modDate, foundEntry->modTime, foundEntry->attrib);
 
 	return true;
 }
@@ -1189,7 +1262,7 @@ bool fatDrive::directoryBrowse(Bit32u dirClustNumber, direntry *useEntry, Bit32s
 		--entNum;
 	}
 
-	memcpy(useEntry, &sectbuf[entryoffset],sizeof(direntry));
+	copyDirEntry(&sectbuf[entryoffset], useEntry);
 	return true;
 }
 
@@ -1223,9 +1296,9 @@ bool fatDrive::directoryChange(Bit32u dirClustNumber, direntry *useEntry, Bit32s
 		--entNum;
 	}
 	if(tmpsector != 0) {
-        memcpy(&sectbuf[entryoffset], useEntry, sizeof(direntry));
+		copyDirEntry(useEntry, &sectbuf[entryoffset]);
 		writeSector(tmpsector, sectbuf);
-        return true;
+		return true;
 	} else {
 		return false;
 	}
@@ -1264,7 +1337,7 @@ bool fatDrive::addDirectoryEntry(Bit32u dirClustNumber, direntry useEntry) {
 
 		/* Deleted file entry or end of directory list */
 		if ((sectbuf[entryoffset].entryname[0] == 0xe5) || (sectbuf[entryoffset].entryname[0] == 0x00)) {
-			sectbuf[entryoffset] = useEntry;
+			copyDirEntry(&useEntry, &sectbuf[entryoffset]);
 			writeSector(tmpsector,sectbuf);
 			break;
 		}
