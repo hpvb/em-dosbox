@@ -23,18 +23,18 @@ dosbox_LDFLAGS=-s TOTAL_MEMORY=134217728 -s ALLOW_MEMORY_GROWTH=0 -s FORCE_FILES
 CLEANFILES=dosbox.js dosbox.html.mem dosbox.js.orig.js dosbox.js.tmp.js
 if EMTERPRETER
 dosbox_LDFLAGS+=-s EMTERPRETIFY=1 -s EMTERPRETIFY_ASYNC=1 -s EMTERPRETIFY_WHITELIST=@$(srcdir)/emterpretify.txt -s FETCH=1
-EXTRA_dosbox_DEPENDENCIES=emterpretify.txt
+EXTRA_dosbox_DEPENDENCIES=emterpretify.txt 
 else
 # Memory init file is huge and it doesn't save bandwith even if using gzip.
 # It is only required when using emterpreter.
-dosbox_LDFLAGS+=--memory-init-file 0
+dosbox_LDFLAGS+=
 if ASYNCIFY
 dosbox_LDFLAGS+=-s ASYNCIFY=1 -s FETCH=1 -s ASYNCIFY_ONLY=@$(srcdir)/asyncify.txt
 EXTRA_dosbox_DEPENDENCIES=asyncify.txt
 endif
 endif
 if WEBASSEMBLY
-dosbox_LDFLAGS+=-s WASM=1
+dosbox_LDFLAGS+=-s WASM=1 -s FORCE_FILESYSTEM -s DISABLE_DEPRECATED_FIND_EVENT_TARGET_BEHAVIOR=0
 else
 dosbox_LDFLAGS+=-s WASM=0
 endif
