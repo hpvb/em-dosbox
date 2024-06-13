@@ -73,7 +73,7 @@ CFileLPT::CFileLPT (Bitu nr, Bit8u initIrq, CommandLine* cmd)
 			LOG_MSG("parallel%d: Invalid timeout parameter.",nr+1);
 			return;
 		}
-	} else timeout = 2000;
+	} else timeout = 5000;
 
 	if(cmd->FindStringBegin("dev:",str,false)) {
 		name = str.c_str();
