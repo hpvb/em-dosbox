@@ -1251,8 +1251,8 @@ public:
 		DOS_SDA(DOS_SDA_SEG,DOS_SDA_OFS).SetDrive(25); /* Else the next call gives a warning. */
 		DOS_SetDefaultDrive(25);
 	
-		dos.version.major=5;
-		dos.version.minor=0;
+		dos.version.major=6;
+		dos.version.minor=22;
 		dos.direct_output=false;
 		dos.internal_output=false;
 	}
