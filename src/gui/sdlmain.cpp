@@ -259,8 +259,8 @@ struct SDL_Block {
 	Bit32u focus_ticks;
 #endif
 	// state of alt-keys for certain special handlings
-	Bit8u laltstate;
-	Bit8u raltstate;
+	SDL_EventType laltstate;
+	SDL_EventType raltstate;
 };
 
 static SDL_Block sdl;
