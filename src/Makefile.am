@@ -30,7 +30,8 @@ else
 # It is only required when using emterpreter.
 dosbox_LDFLAGS+=
 if ASYNCIFY
-dosbox_LDFLAGS+=-s ASYNCIFY=1 -s FETCH=1 -s ASYNCIFY_ONLY=@$(srcdir)/asyncify.txt
+#dosbox_LDFLAGS+=-s ASYNCIFY=1 -s FETCH=1 -s ASYNCIFY_ONLY=@$(srcdir)/asyncify.txt
+dosbox_LDFLAGS+=-s ASYNCIFY=1 -s FETCH=1
 EXTRA_dosbox_DEPENDENCIES=asyncify.txt
 endif
 endif
