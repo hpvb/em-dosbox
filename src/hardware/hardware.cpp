@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2019  The DOSBox Team
+ *  Copyright (C) 2002-2020  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -86,7 +86,6 @@ FILE * OpenCaptureFile(const char * type,const char * ext) {
 		return 0;
 	}
 
-	Bitu last=0;
 	char file_start[16];
 	dir_information * dir;
 	/* Find a filename to open */
@@ -107,18 +106,21 @@ FILE * OpenCaptureFile(const char * type,const char * ext) {
 	bool is_directory;
 	char tempname[CROSS_LEN];
 	bool testRead = read_directory_first(dir, tempname, is_directory );
+	int last = 0;
 	for ( ; testRead; testRead = read_directory_next(dir, tempname, is_directory) ) {
 		char * test=strstr(tempname,ext);
 		if (!test || strlen(test)!=strlen(ext)) 
 			continue;
 		*test=0;
 		if (strncasecmp(tempname,file_start,strlen(file_start))!=0) continue;
-		Bitu num=atoi(&tempname[strlen(file_start)]);
-		if (num>=last) last=num+1;
+		const int num = atoi(&tempname[strlen(file_start)]);
+		if (num >= last)
+			last = num + 1;
 	}
 	close_directory( dir );
 	char file_name[CROSS_LEN];
-	sprintf(file_name,"%s%c%s%03d%s",capturedir.c_str(),CROSS_FILESPLIT,file_start,last,ext);
+	sprintf(file_name, "%s%c%s%03d%s",
+	        capturedir.c_str(), CROSS_FILESPLIT, file_start, last, ext);
 	/* Open the actual file */
 #ifdef EMSCRIPTEN
 	FILE * handle=fopen(file_name,"wb+");
@@ -325,14 +327,19 @@ void CAPTURE_AddImage(Bitu width, Bitu height, Bitu bpp, Bitu pitch, Bitu flags,
 
 		CaptureState &= ~CAPTURE_IMAGE;
 		/* Open the actual file */
-		FILE * fp=OpenCaptureFile("Screenshot",".png");
-		if (!fp) goto skip_shot;
+		FILE *fp = OpenCaptureFile("Screenshot", ".png");
+		if (!fp)
+			goto skip_shot;
 		/* First try to allocate the png structures */
 		png_ptr = png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL,NULL, NULL);
-		if (!png_ptr) goto skip_shot;
+		if (!png_ptr) {
+			fclose(fp);
+			goto skip_shot;
+		}
 		info_ptr = png_create_info_struct(png_ptr);
 		if (!info_ptr) {
-			png_destroy_write_struct(&png_ptr,(png_infopp)NULL);
+			png_destroy_write_struct(&png_ptr, (png_infopp)NULL);
+			fclose(fp);
 			goto skip_shot;
 		}
 	
@@ -364,25 +371,21 @@ void CAPTURE_AddImage(Bitu width, Bitu height, Bitu bpp, Bitu pitch, Bitu flags,
 				PNG_COMPRESSION_TYPE_DEFAULT, PNG_FILTER_TYPE_DEFAULT);
 		}
 #ifdef PNG_TEXT_SUPPORTED
-		int fields = 1;
-		png_text text[1] = {};
-		const char* text_s = "DOSBox " VERSION;
-		size_t strl = strlen(text_s);
-		char* ptext_s = new char[strl + 1];
-		strcpy(ptext_s, text_s);
-		char software[9] = { 'S','o','f','t','w','a','r','e',0};
-		text[0].compression = PNG_TEXT_COMPRESSION_NONE;
-		text[0].key  = software;
-		text[0].text = ptext_s;
-		png_set_text(png_ptr, info_ptr, text, fields);
+		constexpr char keyword[] = "Software";
+		constexpr char value[] = "dosbox-staging " VERSION;
+		constexpr int num_text = 1;
+		static_assert(sizeof(keyword) < 80, "libpng limit");
+		png_text texts[num_text] = {};
+		texts[0].compression = PNG_TEXT_COMPRESSION_NONE;
+		texts[0].key = const_cast<png_charp>(keyword);
+		texts[0].text = const_cast<png_charp>(value);
+		texts[0].text_length = sizeof(value);
+		png_set_text(png_ptr, info_ptr, texts, num_text);
 #endif
 		png_write_info(png_ptr, info_ptr);
-#ifdef PNG_TEXT_SUPPORTED
-		delete [] ptext_s;
-#endif
 		for (i=0;i<height;i++) {
 			void *rowPointer;
-			void *srcLine;
+			uint8_t *srcLine;
 			if (flags & CAPTURE_FLAG_DBLH)
 				srcLine=(data+(i >> 1)*pitch);
 			else
@@ -393,21 +396,21 @@ void CAPTURE_AddImage(Bitu width, Bitu height, Bitu bpp, Bitu pitch, Bitu flags,
 				if (flags & CAPTURE_FLAG_DBLW) {
    					for (Bitu x=0;x<countWidth;x++)
 						doubleRow[x*2+0] =
-						doubleRow[x*2+1] = ((Bit8u *)srcLine)[x];
+						doubleRow[x*2+1] = srcLine[x];
 					rowPointer = doubleRow;
 				}
 				break;
 			case 15:
 				if (flags & CAPTURE_FLAG_DBLW) {
-					for (Bitu x=0;x<countWidth;x++) {
-						Bitu pixel = ((Bit16u *)srcLine)[x];
+					for (Bitu x = 0; x < countWidth; x++) {
+						const Bitu pixel = host_readw_at(srcLine, x);
 						doubleRow[x*6+0] = doubleRow[x*6+3] = ((pixel& 0x001f) * 0x21) >>  2;
 						doubleRow[x*6+1] = doubleRow[x*6+4] = ((pixel& 0x03e0) * 0x21) >>  7;
 						doubleRow[x*6+2] = doubleRow[x*6+5] = ((pixel& 0x7c00) * 0x21) >>  12;
 					}
 				} else {
-					for (Bitu x=0;x<countWidth;x++) {
-						Bitu pixel = ((Bit16u *)srcLine)[x];
+					for (Bitu x = 0; x < countWidth; x++) {
+						const Bitu pixel = host_readw_at(srcLine, x);
 						doubleRow[x*3+0] = ((pixel& 0x001f) * 0x21) >>  2;
 						doubleRow[x*3+1] = ((pixel& 0x03e0) * 0x21) >>  7;
 						doubleRow[x*3+2] = ((pixel& 0x7c00) * 0x21) >>  12;
@@ -417,15 +420,15 @@ void CAPTURE_AddImage(Bitu width, Bitu height, Bitu bpp, Bitu pitch, Bitu flags,
 				break;
 			case 16:
 				if (flags & CAPTURE_FLAG_DBLW) {
-					for (Bitu x=0;x<countWidth;x++) {
-						Bitu pixel = ((Bit16u *)srcLine)[x];
+					for (Bitu x = 0; x < countWidth; x++) {
+						const Bitu pixel = host_readw_at(srcLine, x);
 						doubleRow[x*6+0] = doubleRow[x*6+3] = ((pixel& 0x001f) * 0x21) >> 2;
 						doubleRow[x*6+1] = doubleRow[x*6+4] = ((pixel& 0x07e0) * 0x41) >> 9;
 						doubleRow[x*6+2] = doubleRow[x*6+5] = ((pixel& 0xf800) * 0x21) >> 13;
 					}
 				} else {
-					for (Bitu x=0;x<countWidth;x++) {
-						Bitu pixel = ((Bit16u *)srcLine)[x];
+					for (Bitu x = 0; x < countWidth; x++) {
+						const Bitu pixel = host_readw_at(srcLine, x);
 						doubleRow[x*3+0] = ((pixel& 0x001f) * 0x21) >>  2;
 						doubleRow[x*3+1] = ((pixel& 0x07e0) * 0x41) >>  9;
 						doubleRow[x*3+2] = ((pixel& 0xf800) * 0x21) >>  13;
@@ -436,15 +439,15 @@ void CAPTURE_AddImage(Bitu width, Bitu height, Bitu bpp, Bitu pitch, Bitu flags,
 			case 32:
 				if (flags & CAPTURE_FLAG_DBLW) {
 					for (Bitu x=0;x<countWidth;x++) {
-						doubleRow[x*6+0] = doubleRow[x*6+3] = ((Bit8u *)srcLine)[x*4+0];
-						doubleRow[x*6+1] = doubleRow[x*6+4] = ((Bit8u *)srcLine)[x*4+1];
-						doubleRow[x*6+2] = doubleRow[x*6+5] = ((Bit8u *)srcLine)[x*4+2];
+						doubleRow[x*6+0] = doubleRow[x*6+3] = srcLine[x*4+0];
+						doubleRow[x*6+1] = doubleRow[x*6+4] = srcLine[x*4+1];
+						doubleRow[x*6+2] = doubleRow[x*6+5] = srcLine[x*4+2];
 					}
 				} else {
 					for (Bitu x=0;x<countWidth;x++) {
-						doubleRow[x*3+0] = ((Bit8u *)srcLine)[x*4+0];
-						doubleRow[x*3+1] = ((Bit8u *)srcLine)[x*4+1];
-						doubleRow[x*3+2] = ((Bit8u *)srcLine)[x*4+2];
+						doubleRow[x*3+0] = srcLine[x*4+0];
+						doubleRow[x*3+1] = srcLine[x*4+1];
+						doubleRow[x*3+2] = srcLine[x*4+2];
 					}
 				}
 				rowPointer = doubleRow;
@@ -520,7 +523,7 @@ skip_shot:
 		for (i=0;i<height;i++) {
 			void * rowPointer;
 			if (flags & CAPTURE_FLAG_DBLW) {
-				void *srcLine;
+				uint8_t *srcLine;
 				Bitu x;
 				Bitu countWidth = width >> 1;
 				if (flags & CAPTURE_FLAG_DBLH)
@@ -530,19 +533,23 @@ skip_shot:
 				switch ( bpp) {
 				case 8:
 					for (x=0;x<countWidth;x++)
-						((Bit8u *)doubleRow)[x*2+0] =
-						((Bit8u *)doubleRow)[x*2+1] = ((Bit8u *)srcLine)[x];
+						doubleRow[x*2+0] =
+						doubleRow[x*2+1] = srcLine[x];
 					break;
 				case 15:
 				case 16:
-					for (x=0;x<countWidth;x++)
-						((Bit16u *)doubleRow)[x*2+0] =
-						((Bit16u *)doubleRow)[x*2+1] = ((Bit16u *)srcLine)[x];
+					for (x = 0; x < countWidth; x++) {
+						const uint16_t pixel = host_readw_at(srcLine, x);
+						host_writew_at(doubleRow, x * 2, pixel);
+						host_writew_at(doubleRow, x * 2 + 1, pixel);
+					}
 					break;
 				case 32:
-					for (x=0;x<countWidth;x++)
-						((Bit32u *)doubleRow)[x*2+0] =
-						((Bit32u *)doubleRow)[x*2+1] = ((Bit32u *)srcLine)[x];
+					for (x = 0; x < countWidth; x++) {
+						const uint32_t pixel = host_readd_at(srcLine, x);
+						host_writed_at(doubleRow, x * 2, pixel);
+						host_writed_at(doubleRow, x * 2 + 1, pixel);
+					}
 					break;
 				}
                 rowPointer=doubleRow;

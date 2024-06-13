@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2019  The DOSBox Team
+ *  Copyright (C) 2002-2020  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,19 +16,14 @@
  *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  */
 
+#ifndef DOSBOX_MISC_UTIL_H
+#define DOSBOX_MISC_UTIL_H
 
-#ifndef SDLNETWRAPPER_H
-#define SDLNETWRAPPER_H
-
-#ifndef DOSBOX_DOSBOX_H
 #include "dosbox.h"
-#endif
 
 #if C_MODEM
 
-# ifndef DOSBOX_SUPPORT_H
 #include "support.h"
-#endif
 
 // Netwrapper Capabilities
 #define NETWRAPPER_TCP 1
@@ -40,7 +35,7 @@
  #include <ws2tcpip.h> //for socklen_t
  //typedef int  socklen_t;
 
-//Tests for BSD/OS2/LINUX
+//Tests for BSD/LINUX
 #elif defined HAVE_STDLIB_H && defined HAVE_SYS_TYPES_H && defined HAVE_SYS_SOCKET_H && defined HAVE_NETINET_IN_H
  #define NATIVESOCKETS
  #define SOCKET int
@@ -58,65 +53,80 @@
  #define CAPWORD NETWRAPPER_TCP
 #endif
 
-#include "SDL_net.h"
-
-
+#include <SDL_net.h>
 
 Bit32u Netwrapper_GetCapabilities();
 
+struct _TCPsocketX {
+	int ready;
+#ifdef NATIVESOCKETS
+	SOCKET channel;
+#endif
+	IPaddress remoteAddress;
+	IPaddress localAddress;
+	int sflag;
+};
 
 class TCPClientSocket {
-	public:
+public:
 	TCPClientSocket(TCPsocket source);
 	TCPClientSocket(const char* destination, Bit16u port);
 #ifdef NATIVESOCKETS
-	Bit8u* nativetcpstruct;
 	TCPClientSocket(int platformsocket);
 #endif
+	TCPClientSocket(const TCPClientSocket&) = delete; // prevent copying
+	TCPClientSocket& operator=(const TCPClientSocket&) = delete; // prevent assignment
+
 	~TCPClientSocket();
-	
+
 	// return:
 	// -1: no data
 	// -2: socket closed
 	// >0: data char
 	Bits GetcharNonBlock();
-	
-	
+
 	bool Putchar(Bit8u data);
 	bool SendArray(Bit8u* data, Bitu bufsize);
 	bool ReceiveArray(Bit8u* data, Bitu* size);
-	bool isopen;
+
+	bool isopen = false;
 
 	bool GetRemoteAddressString(Bit8u* buffer);
 
 	void FlushBuffer();
 	void SetSendBufferSize(Bitu bufsize);
-	
+
 	// buffered send functions
 	bool SendByteBuffered(Bit8u data);
-	bool SendArrayBuffered(Bit8u* data, Bitu bufsize);
 
-	private:
-	TCPsocket mysock;
-	SDLNet_SocketSet listensocketset;
+private:
+
+#ifdef NATIVESOCKETS
+	_TCPsocketX *nativetcpstruct = nullptr;
+#endif
+
+	TCPsocket mysock = nullptr;
+	SDLNet_SocketSet listensocketset = nullptr;
 
 	// Items for send buffering
-	Bitu sendbuffersize;
-	Bitu sendbufferindex;
-	
-	Bit8u* sendbuffer;
+	Bitu sendbuffersize = 0;
+	Bitu sendbufferindex = 0;
+	Bit8u *sendbuffer = nullptr;
 };
 
-class TCPServerSocket {
-	public:
-	bool isopen;
-	TCPsocket mysock;
+struct TCPServerSocket {
+	bool isopen = false;
+	TCPsocket mysock = nullptr;
+
 	TCPServerSocket(Bit16u port);
+	TCPServerSocket(const TCPServerSocket&) = delete; // prevent copying
+	TCPServerSocket& operator=(const TCPServerSocket&) = delete; // prevent assignment
+
 	~TCPServerSocket();
+
 	TCPClientSocket* Accept();
 };
 
+#endif // C_MODEM
 
-#endif //C_MODEM
-
-#endif //# SDLNETWRAPPER_H
+#endif

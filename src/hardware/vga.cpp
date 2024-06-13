@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2019  The DOSBox Team
+ *  Copyright (C) 2002-2020  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,14 +16,13 @@
  *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  */
 
-
-#include "dosbox.h"
-//#include "setup.h"
-#include "video.h"
-#include "pic.h"
 #include "vga.h"
 
-#include <string.h>
+#include <cassert>
+#include <cstring>
+
+#include "pic.h"
+#include "video.h"
 
 VGA_Type vga;
 SVGA_Driver svga;
@@ -128,11 +127,13 @@ void VGA_SetClock(Bitu which,Bitu target) {
 				best.n = n;
 			}
 		}
-    }
+	}
 	/* Program the s3 clock chip */
-	vga.s3.clk[which].m=best.m;
-	vga.s3.clk[which].r=r;
-	vga.s3.clk[which].n=best.n;
+	constexpr size_t vga_s3_clk_len = sizeof(vga.s3.clk) / sizeof(*vga.s3.clk);
+	assert(which < vga_s3_clk_len);
+	vga.s3.clk[which].m = best.m;
+	vga.s3.clk[which].r = r;
+	vga.s3.clk[which].n = best.n;
 	VGA_StartResize();
 }
 

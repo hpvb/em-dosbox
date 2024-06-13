@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2019  The DOSBox Team
+ *  Copyright (C) 2002-2020  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -1214,8 +1214,7 @@ bool CSerial::Putchar(Bit8u data, bool wait_dsr, bool wait_cts, Bitu timeout) {
 
 #if SERIAL_DEBUG
 	log_ser(dbg_aux,"Putchar 0x%x",data);
-#endif
-
+#endif 
 	return true;
 }
 
@@ -1224,6 +1223,11 @@ public:
 	SERIALPORTS (Section * configuration):Module_base (configuration) {
 		Bit16u biosParameter[4] = { 0, 0, 0, 0 };
 		Section_prop *section = static_cast <Section_prop*>(configuration);
+
+#if C_MODEM
+		const Prop_path *pbFilename = section->Get_path("phonebookfile");
+		MODEM_ReadPhonebook(pbFilename->realpath);
+#endif
 
 		char s_property[] = "serialx"; 
 		for(Bitu i = 0; i < 4; i++) {

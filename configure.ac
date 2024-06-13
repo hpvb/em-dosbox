@@ -804,6 +804,7 @@ src/hardware/serialport/Makefile
 src/hardware/parport/Makefile
 src/ints/Makefile
 src/libs/Makefile
+src/libs/nuked/Makefile
 src/libs/zmbv/Makefile
 src/libs/gui_tk/Makefile
 src/misc/Makefile

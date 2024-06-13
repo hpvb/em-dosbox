@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2019  The DOSBox Team
+ *  Copyright (C) 2002-2020  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,10 +16,11 @@
  *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  */
 
-
 #include "dosbox.h"
 
 #if C_IPX
+
+#include <SDL_net.h>
 
 #include <string.h>
 #include <time.h>
@@ -37,7 +38,6 @@
 #include "ipx.h"
 #include "ipxserver.h"
 #include "timer.h"
-#include "SDL_net.h"
 #include "programs.h"
 #include "pic.h"
 

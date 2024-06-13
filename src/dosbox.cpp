@@ -142,6 +142,8 @@ Bit32u ticksScheduled;
 bool ticksLocked;
 void increaseticks();
 
+bool mono_cga=false;
+
 #ifdef EMSCRIPTEN
 static int ticksEntry;
 #if defined(EMTERPRETER_SYNC) || defined(EM_ASYNCIFY)
@@ -579,7 +581,8 @@ static void DOSBOX_RealInit(Section * sec) {
 	machine = MCH_VGA;
 	int10.vesa_nolfb = false;
 	int10.vesa_oldvbe = false;
-	if      (mtype == "cga")      { machine = MCH_CGA; }
+        if      (mtype == "cga")      { machine = MCH_CGA; mono_cga = false; }
+        else if (mtype == "cga_mono") { machine = MCH_CGA; mono_cga = true; }
 	else if (mtype == "tandy")    { machine = MCH_TANDY; }
 	else if (mtype == "pcjr")     { machine = MCH_PCJR; }
 	else if (mtype == "hercules") { machine = MCH_HERC; }

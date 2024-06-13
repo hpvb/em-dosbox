@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2019  The DOSBox Team
+ *  Copyright (C) 2002-2020  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -32,15 +32,14 @@
 	//DUNNO Keyon in 4op, switch to 2op without keyoff.
 */
 
+#include "dbopl.h"
 
-
+#include <cassert>
+#include <cstddef>
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stddef.h>
-#include "dosbox.h"
-#include "dbopl.h"
-
+#include <type_traits>
 
 #ifndef PI
 #define PI 3.14159265358979323846
@@ -883,6 +882,9 @@ Channel* Channel::BlockTemplate( Chip* chip, Bit32u samples, Bit32s* output ) {
 			return (this + 2);
 		}
 		break;
+	case sm2Percussion:
+	case sm3Percussion:
+		break;
 	}
 	//Init the operators with the the current vibrato and tremolo values
 	Op( 0 )->Prepare( chip );
@@ -947,6 +949,9 @@ Channel* Channel::BlockTemplate( Chip* chip, Bit32u samples, Bit32s* output ) {
 		case sm3AMAM:
 			output[ i * 2 + 0 ] += sample & maskLeft;
 			output[ i * 2 + 1 ] += sample & maskRight;
+			break;
+		case sm2Percussion:
+		case sm3Percussion:
 			break;
 		}
 	}
@@ -1444,6 +1449,13 @@ void InitTables( void ) {
 		//Add back the bits for highest ones
 		if ( i >= 16 )
 			index += 9;
+
+		static_assert(std::is_standard_layout<Chip>::value,
+		              "struct Chip is not a standard layout type");
+		static_assert(offsetof(Chip, chan) == 0,
+		              "offset table stores values relative to the start of struct");
+		// values stored in offset tables are artificially increased by 1
+		// to keep macros REGCHAN and REGOP working correctly
 		ChanOffsetTable[i] = 1+(Bit16u)(index*sizeof(DBOPL::Channel));
 	}
 	//Same for operators
@@ -1457,7 +1469,13 @@ void InitTables( void ) {
 		if ( chNum >= 12 )
 			chNum += 16 - 12;
 		Bitu opNum = ( i % 8 ) / 3;
+
+		static_assert(std::is_standard_layout<Channel>::value,
+		              "struct Channel is not a standard layout type");
+		static_assert(offsetof(Channel, op) == 0,
+		              "offset table stores values relative to the start of struct");
 		OpOffsetTable[i] = ChanOffsetTable[chNum]+(Bit16u)(opNum*sizeof(DBOPL::Operator));
+		assert(OpOffsetTable[i] > 0); // needs to be non-zero; see REGOP macro
 	}
 #if 0
 	DBOPL::Chip* chip = 0;

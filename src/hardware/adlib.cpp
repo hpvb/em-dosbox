@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2019  The DOSBox Team
+ *  Copyright (C) 2002-2020  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,6 @@
  *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  */
 
-
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
@@ -27,10 +26,12 @@
 #include "mapper.h"
 #include "mem.h"
 #include "dbopl.h"
+#include "../libs/nuked/nukedopl.h"
 
 #include "mame/emu.h"
 #include "mame/fmopl.h"
 #include "mame/ymf262.h"
+
 
 #define OPL2_INTERNAL_FREQ    3600000   // The OPL2 operates at 3.6MHz
 #define OPL3_INTERNAL_FREQ    14400000  // The OPL3 operates at 14.4MHz
@@ -95,7 +96,7 @@ namespace OPL3 {
 namespace MAMEOPL2 {
 
 struct Handler : public Adlib::Handler {
-	void* chip;
+	void *chip = nullptr;
 
 	virtual void WriteReg(Bit32u reg, Bit8u val) {
 		ym3812_write(chip, 0, reg);
@@ -127,7 +128,7 @@ struct Handler : public Adlib::Handler {
 namespace MAMEOPL3 {
 
 struct Handler : public Adlib::Handler {
-	void* chip;
+	void *chip = nullptr;
 
 	virtual void WriteReg(Bit32u reg, Bit8u val) {
 		ymf262_write(chip, 0, reg);
@@ -164,10 +165,48 @@ struct Handler : public Adlib::Handler {
 
 }
 
+namespace NukedOPL {
 
+struct Handler : public Adlib::Handler {
+	opl3_chip chip = {};
+	Bit8u newm = 0;
 
-#define RAW_SIZE 1024
+	void WriteReg(Bit32u reg, Bit8u val) override
+	{
+		OPL3_WriteRegBuffered(&chip, (Bit16u)reg, val);
+		if (reg == 0x105)
+			newm = reg & 0x01;
+	}
 
+	Bit32u WriteAddr(Bit32u port, Bit8u val) override
+	{
+		Bit16u addr;
+		addr = val;
+		if ((port & 2) && (addr == 0x05 || newm)) {
+			addr |= 0x100;
+		}
+		return addr;
+	}
+
+	void Generate(MixerChannel *chan, Bitu samples) override
+	{
+		int16_t buf[1024 * 2];
+		while (samples > 0) {
+			uint32_t todo = samples > 1024 ? 1024 : samples;
+			OPL3_GenerateStream(&chip, buf, todo);
+			chan->AddSamples_s16(todo, buf);
+			samples -= todo;
+		}
+	}
+
+	void Init(Bitu rate) override
+	{
+		newm = 0;
+		OPL3_Reset(&chip, rate);
+	}
+};
+
+} // namespace NukedOPL
 
 /*
 	Main Adlib implementation
@@ -211,24 +250,18 @@ struct RawHeader {
 
 //Table to map the opl register to one <127 for dro saving
 class Capture {
-	//127 entries to go from raw data to registers
-	Bit8u ToReg[127];
-	//How many entries in the ToPort are used
-	Bit8u RawUsed;
-	//256 entries to go from port index to raw data
-	Bit8u ToRaw[256];
-	Bit8u delay256;
-	Bit8u delayShift8;
+	Bit8u ToReg[127];       // 127 entries to go from raw data to registers
+	Bit8u RawUsed = 0;      // How many entries in the ToPort are used
+	Bit8u ToRaw[256];       // 256 entries to go from port index to raw data
+	Bit8u delay256 = 0;
+	Bit8u delayShift8 = 0;
 	RawHeader header;
 
-	FILE*	handle;				//File used for writing
-	Bit32u	startTicks;			//Start used to check total raw length on end
-	Bit32u	lastTicks;			//Last ticks when last last cmd was added
-	Bit8u	buf[1024];	//16 added for delay commands and what not
-	Bit32u	bufUsed;
-	Bit8u	cmd[2];				//Last cmd's sent to either ports
-	bool	doneOpl3;
-	bool	doneDualOpl2;
+	FILE*  handle = nullptr;  // File used for writing
+	Bit32u startTicks = 0;    // Start used to check total raw length on end
+	Bit32u lastTicks = 0;     // Last ticks when last last cmd was added
+	Bit8u  buf[1024];         // 16 added for delay commands and what not
+	Bit32u bufUsed = 0;
 
 	RegisterCache* cache;
 
@@ -334,10 +367,10 @@ class Capture {
 		if ( handle ) {
 			ClearBuf();
 			/* Endianize the header and write it to beginning of the file */
-			var_write( &header.versionHigh, header.versionHigh );
-			var_write( &header.versionLow, header.versionLow );
-			var_write( &header.commands, header.commands );
-			var_write( &header.milliseconds, header.milliseconds );
+			header.versionHigh  = host_to_le(header.versionHigh);
+			header.versionLow   = host_to_le(header.versionLow);
+			header.commands     = host_to_le(header.commands);
+			header.milliseconds = host_to_le(header.milliseconds);
 			fseek( handle, 0, SEEK_SET );
 			fwrite( &header, 1, sizeof( header ), handle );
 			fclose( handle );
@@ -414,16 +447,21 @@ skipWrite:
 		startTicks = PIC_Ticks;
 		return true;
 	}
-	Capture( RegisterCache* _cache ) {
-		cache = _cache;
-		handle = 0;
-		bufUsed = 0;
+
+	Capture(RegisterCache *_cache)
+		: header(),
+		  cache(_cache)
+	{
 		MakeTables();
 	}
-	~Capture() {
+
+	virtual ~Capture()
+	{
 		CloseFile();
 	}
 
+	Capture(const Capture&) = delete; // prevent copy
+	Capture& operator=(const Capture&) = delete; // prevent assignment
 };
 
 /*
@@ -709,6 +747,7 @@ void OPL_Write(Bitu port,Bitu val,Bitu iolen) {
 /*
 	Save the current state of the operators as instruments in an reality adlib tracker file
 */
+#if 0
 static void SaveRad() {
 	char b[16 * 1024];
 	int w = 0;
@@ -747,7 +786,7 @@ static void SaveRad() {
 	fwrite( b, 1, w, handle );
 	fclose( handle );
 };
-
+#endif // 0
 
 static void OPL_SaveRawEvent(bool pressed) {
 	if (!pressed)
@@ -766,50 +805,55 @@ static void OPL_SaveRawEvent(bool pressed) {
 
 namespace Adlib {
 
-Module::Module( Section* configuration ) : Module_base(configuration) {
-	reg.dual[0] = 0;
-	reg.dual[1] = 0;
-	reg.normal = 0;
-	ctrl.active = false;
-	ctrl.index = 0;
-	ctrl.lvol = 0xff;
-	ctrl.rvol = 0xff;
-	handler = 0;
-	capture = 0;
+static Handler * make_opl_handler(const std::string &oplemu, OPL_Mode mode)
+{
+	if (oplemu == "fast") {
+		return new DBOPL::Handler();
+	}
+	if (oplemu == "compat") {
+		if (mode == OPL_opl2)
+			return new OPL2::Handler();
+		else
+			return new OPL3::Handler();
+	}
+	if (oplemu == "mame") {
+		if (mode == OPL_opl2)
+			return new MAMEOPL2::Handler();
+		else
+			return new MAMEOPL3::Handler();
+	}
+	if (oplemu == "nuked") {
+		return new NukedOPL::Handler();
+	}
+	return new NukedOPL::Handler();
+}
 
+Module::Module(Section *configuration)
+	: Module_base(configuration),
+	  mixerObject(),
+	  mode(MODE_OPL2), // TODO this is set in Init and there's no good default
+	  reg{0}, // union
+	  ctrl{false, 0, 0xff, 0xff},
+	  mixerChan(nullptr),
+	  lastUsed(0),
+	  handler(nullptr),
+	  capture(nullptr)
+{
 	Section_prop * section=static_cast<Section_prop *>(configuration);
 	Bitu base = section->Get_hex("sbbase");
 	Bitu rate = section->Get_int("oplrate");
 	//Make sure we can't select lower than 8000 to prevent fixed point issues
 	if ( rate < 8000 )
 		rate = 8000;
-	std::string oplemu( section->Get_string( "oplemu" ) );
 	ctrl.mixer = section->Get_bool("sbmixer");
 
 	mixerChan = mixerObject.Install(OPL_CallBack,rate,"FM");
 	//Used to be 2.0, which was measured to be too high. Exact value depends on card/clone.
 	mixerChan->SetScale( 1.5f );  
 
-	if (oplemu == "fast") {
-		handler = new DBOPL::Handler();
-	} else if (oplemu == "compat") {
-		if ( oplmode == OPL_opl2 ) {
-			handler = new OPL2::Handler();
-		} else {
-			handler = new OPL3::Handler();
-		}
-	}
-	else if (oplemu == "mame") {
-		if (oplmode == OPL_opl2) {
-			handler = new MAMEOPL2::Handler();
-		}
-		else {
-			handler = new MAMEOPL3::Handler();
-		}
-	} else {
-		handler = new DBOPL::Handler();
-	}
-	handler->Init( rate );
+	handler = make_opl_handler(section->Get_string("oplemu"), oplmode);
+	handler->Init(rate);
+
 	bool single = false;
 	switch ( oplmode ) {
 	case OPL_opl2:
@@ -824,6 +868,9 @@ Module::Module( Section* configuration ) : Module_base(configuration) {
 		break;
 	case OPL_opl3gold:
 		Init( Adlib::MODE_OPL3GOLD );
+		break;
+	case OPL_cms:
+	case OPL_none:
 		break;
 	}
 	//0x388 range
