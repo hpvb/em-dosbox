@@ -45,6 +45,7 @@
 #include "ints/int10.h"
 #include "render.h"
 #include "pci_bus.h"
+#include "parport.h"
 
 #if !SDL_VERSION_ATLEAST(2,0,0)
 #define SDL_TICKS_PASSED(A, B)  ((Sint32)((B) - (A)) <= 0)
@@ -100,6 +101,10 @@ void SERIAL_Init(Section*);
 
 #if C_IPX
 void IPX_Init(Section*);
+#endif
+
+#if C_PRINTER
+void PRINTER_Init(Section*);
 #endif
 
 void SID_Init(Section* sec);
@@ -177,7 +182,7 @@ static Bitu Normal_Loop(void) {
 			 * running slow overall or the page is in the background.
 			 */
 			LOG_MSG("Emulation aborted due to nested emulation timeout.");
-			em_exit(1);
+			//em_exit(1);
 		}
 	}
 	last_loop = ticksEntry;
@@ -971,6 +976,78 @@ void DOSBOX_Init(void) {
 	Pstring = Pmulti_remain->GetSection()->Add_string("parameters",Property::Changeable::WhenIdle,"");
 	Pmulti_remain->Set_help("see serial1");
 
+
+#if C_PRINTER
+        secprop=control->AddSection_prop("printer",&PRINTER_Init);
+        Pbool = secprop->Add_bool("printer",Property::Changeable::WhenIdle,true);
+        Pbool->Set_help("Enable printer emulation.");
+        //secprop->Add_string("fontpath","%%windir%%\\fonts");
+        Pint = secprop->Add_int("dpi",Property::Changeable::WhenIdle,360);
+        Pint->Set_help("Resolution of printer (default 360).");
+        Pint = secprop->Add_int("width",Property::Changeable::WhenIdle,85);
+        Pint->Set_help("Width of paper in 1/10 inch (default 85 = 8.5'').");
+        Pint = secprop->Add_int("height",Property::Changeable::WhenIdle,110);
+        Pint->Set_help("Height of paper in 1/10 inch (default 110 = 11.0'').");
+#ifdef C_LIBPNG
+        Pstring = secprop->Add_string("printoutput",Property::Changeable::WhenIdle, "png");
+#else
+        Pstring = secprop->Add_string("printoutput",Property::Changeable::WhenIdle, "ps");
+#endif
+        Pstring->Set_help("Output method for finished pages: \n"
+#ifdef C_LIBPNG
+                "  png     : Creates PNG images (default)\n"
+#endif  
+                "  ps      : Creates Postscript\n"
+                "  bmp     : Creates BMP images (very huge files, not recommend)\n"
+#if defined (WIN32)
+                "  printer : Send to an actual printer (Print dialog will appear)"
+#endif  
+                );
+        
+        Pbool = secprop->Add_bool("multipage",Property::Changeable::WhenIdle, false);
+        Pbool->Set_help("Adds all pages to one Postscript file or printer job until CTRL-F2 is pressed.");
+
+        Pstring = secprop->Add_string("docpath",Property::Changeable::WhenIdle,".");
+        Pstring->Set_help("The path where the output files are stored.");
+
+        Pint = secprop->Add_int("timeout",Property::Changeable::WhenIdle,0);
+        Pint->Set_help("(in milliseconds) if nonzero: the time the page will\n"
+                                        "be ejected automatically after when no more data\n"
+                                        "arrives at the printer.");
+#endif 
+
+        // parallel ports
+        secprop=control->AddSection_prop("parallel",&PARALLEL_Init,true); 
+        Pstring = secprop->Add_string("parallel1",Property::Changeable::WhenIdle,"disabled");
+        Pstring->Set_help(
+                "parallel1-3 -- set type of device connected to lpt port.\n"
+                        "Can be:\n"
+                        "       reallpt (direct parallel port passthrough),\n"
+                        "       file (records data to a file or passes it to a device),\n"
+                        "       printer (virtual dot-matrix printer, see [printer] section)\n"
+                "Additional parameters must be in the same line in the form of\n"
+                "parameter:value.\n"
+                "  for reallpt:\n"
+                "  Windows:\n"
+                        "    realbase (the base address of your real parallel port).\n"
+                        "      Default: 378\n"
+                        "    ecpbase (base address of the ECP registers, optional).\n"
+                        "  Linux: realport (the parallel port device i.e. /dev/parport0).\n"
+                        "  for file: \n"
+                        "    dev:<devname> (i.e. dev:lpt1) to forward data to a device,\n"
+                        "    or append:<file> appends data to the specified file.\n"
+                        "    Without the above parameters data is written to files in the capture dir.\n"
+                        "    Additional parameters: timeout:<milliseconds> = how long to wait before\n"
+                        "    closing the file on inactivity (default:500), addFF to add a formfeed when\n"
+                        "    closing, addLF to add a linefeed if the app doesn't, cp:<codepage number>\n"
+                        "    to perform codepage translation, i.e. cp:437\n"
+                        "  for printer:\n"
+                        "    printer still has it's own configuration section above."
+        );
+        Pstring = secprop->Add_string("parallel2",Property::Changeable::WhenIdle,"disabled");
+        Pstring->Set_help("see parallel1");
+        Pstring = secprop->Add_string("parallel3",Property::Changeable::WhenIdle,"disabled");
+        Pstring->Set_help("see parallel1");
 
 	/* All the DOS Related stuff, which will eventually start up in the shell */
 	secprop=control->AddSection_prop("dos",&DOS_Init,false);//done

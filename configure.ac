@@ -515,6 +515,26 @@ else
   fi
 fi
 
+AH_TEMPLATE(C_PRINTER,[Define to 1 to enable printer])
+AC_ARG_ENABLE(printer,AC_HELP_STRING([--disable-printer],[Disable printer support]),,enable_printer=yes)
+AC_MSG_CHECKING(whether printer emulation will be enabled) 
+if test x$enable_printer = xyes ; then 
+  AC_MSG_RESULT(yes)
+  AC_DEFINE(C_PRINTER,1)
+else 
+  AC_MSG_RESULT(no)
+fi 
+
+AH_TEMPLATE(C_PNG,[Define to 1 to enable png])
+AC_ARG_ENABLE(png,AC_HELP_STRING([--disable-png],[Disable png support]),,enable_png=yes)
+AC_MSG_CHECKING(whether png emulation will be enabled) 
+if test x$enable_png = xyes ; then 
+  AC_MSG_RESULT(yes)
+  AC_DEFINE(C_PNG,1)
+else 
+  AC_MSG_RESULT(no)
+fi 
+
 AH_TEMPLATE(C_UNALIGNED_MEMORY,[Define to 1 to use a unaligned memory access])
 AC_ARG_ENABLE(unaligned_memory,AC_HELP_STRING([--disable-unaligned-memory],[Disable unaligned memory access]),,enable_unaligned_memory=yes)
 AC_MSG_CHECKING(whether to enable unaligned memory access) 
@@ -758,7 +778,7 @@ AS_IF([test "x$enable_emscripten" = "xyes"],[
   AS_IF([test "x$enable_asyncify" != "xno"], [AC_DEFINE([EM_ASYNCIFY],[1])])
   AS_IF([test "x$with_sdl2" != "xno"],[
     AS_IF([test "x$with_sdl2" = "xyes"],
-      [CXXFLAGS="$CXXFLAGS -s USE_SDL=2"],
+      [CXXFLAGS="$CXXFLAGS -s USE_SDL=2 -s USE_FREETYPE=1 -s USE_LIBPNG=1"],
       [LIBS="$LIBS -L$with_sdl2/build/.libs/ -lSDL2"
        CXXFLAGS="$CXXFLAGS -Wno-warn-absolute-paths -I$with_sdl2/include"
     ])
@@ -781,6 +801,7 @@ src/gui/Makefile
 src/hardware/Makefile
 src/hardware/mame/Makefile
 src/hardware/serialport/Makefile
+src/hardware/parport/Makefile
 src/ints/Makefile
 src/libs/Makefile
 src/libs/zmbv/Makefile

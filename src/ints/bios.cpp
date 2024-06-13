@@ -1254,12 +1254,12 @@ public:
 		/* Setup equipment list */
 		// look http://www.bioscentral.com/misc/bda.htm
 		
-		//Bit16u config=0x4400;	//1 Floppy, 2 serial and 1 parallel 
-		Bit16u config = 0x0;
+		Bit16u config=0x4400;	//1 Floppy, 2 serial and 1 parallel 
+		//Bit16u config = 0x0;
 		
 		// set number of parallel ports
-		// if(ppindex == 0) config |= 0x8000; // looks like 0 ports are not specified
-		//else if(ppindex == 1) config |= 0x0000;
+		if(ppindex == 0) config |= 0x8000; // looks like 0 ports are not specified
+		else if(ppindex == 1) config |= 0x0000;
 		if(ppindex == 2) config |= 0x4000;
 		else config |= 0xc000;	// 3 ports
 #if (C_FPU)
@@ -1348,6 +1348,33 @@ void BIOS_SetComPorts(Bit16u baseaddr[]) {
 	CMOS_SetRegister(0x14,(Bit8u)(equipmentword&0xff)); //Should be updated on changes
 }
 
+void BIOS_SetLPTPort(Bitu port, Bit16u baseaddr) {
+        switch(port) {
+        case 0:
+                mem_writew(BIOS_ADDRESS_LPT1,baseaddr);
+                mem_writeb(BIOS_LPT1_TIMEOUT, 10);
+                break;
+        case 1:
+                mem_writew(BIOS_ADDRESS_LPT2,baseaddr);
+                mem_writeb(BIOS_LPT2_TIMEOUT, 10);
+                break;
+        case 2:
+                mem_writew(BIOS_ADDRESS_LPT3,baseaddr);
+                mem_writeb(BIOS_LPT3_TIMEOUT, 10);
+                break;
+        }
+
+        // set equipment word: count ports
+        Bit16u portcount=0;
+        if(mem_readw(BIOS_ADDRESS_LPT1) != 0) portcount++;
+        if(mem_readw(BIOS_ADDRESS_LPT2) != 0) portcount++;
+        if(mem_readw(BIOS_ADDRESS_LPT3) != 0) portcount++;
+
+        Bit16u equipmentword = mem_readw(BIOS_CONFIGURATION);
+        equipmentword &= (~0xC000);
+        equipmentword |= (portcount << 14);
+        mem_writew(BIOS_CONFIGURATION,equipmentword);
+}
 
 static BIOS* test;
 

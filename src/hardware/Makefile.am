@@ -1,6 +1,6 @@
 AM_CPPFLAGS = -I$(top_srcdir)/include
 
-SUBDIRS = serialport mame
+SUBDIRS = serialport mame parport
 
 EXTRA_DIST = opl.cpp opl.h adlib.h dbopl.h pci_devices.h
 
